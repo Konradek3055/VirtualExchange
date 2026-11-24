@@ -1,3 +1,4 @@
+
 import sqlite3
 from pathlib import Path
 from contextlib import contextmanager
@@ -5,10 +6,11 @@ from contextlib import contextmanager
 DB_PATH = Path(__file__).resolve().parent.parent / "virtualexchange.sqlite3"
 
 def connect():
-    con = sqlite3.connect(DB_PATH, check_same_thread=False)
-    con.row_factory = sqlite3.Row
-    con.execute("PRAGMA foreign_keys=ON")
-    return con
+    db = sqlite3.connect(DB_PATH, timeout=30)
+    db.row_factory = sqlite3.Row
+    db.execute("PRAGMA foreign_keys=ON")
+    db.execute("PRAGMA busy_timeout=30000")
+    return db
 
 def init_db():
     with connect() as db:
@@ -23,12 +25,16 @@ def init_db():
             symbol TEXT NOT NULL,
             available TEXT NOT NULL DEFAULT '0',
             locked TEXT NOT NULL DEFAULT '0',
-            PRIMARY KEY(account_id, symbol)
+            PRIMARY KEY(account_id,symbol)
         );
         CREATE TABLE IF NOT EXISTS assets(
             symbol TEXT PRIMARY KEY,
             name TEXT NOT NULL,
-            last_price TEXT NOT NULL DEFAULT '0'
+            last_price TEXT NOT NULL DEFAULT '0',
+            description TEXT NOT NULL DEFAULT '',
+            creator_id INTEGER REFERENCES accounts(id),
+            total_supply TEXT NOT NULL DEFAULT '0',
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
         );
         CREATE TABLE IF NOT EXISTS orders(
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -54,6 +60,8 @@ def init_db():
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
         );
         """)
+        db.execute("CREATE INDEX IF NOT EXISTS idx_orders_book ON orders(symbol,side,status,id)")
+        db.execute("CREATE INDEX IF NOT EXISTS idx_trades_symbol ON trades(symbol,id)")
         db.commit()
 
 @contextmanager
