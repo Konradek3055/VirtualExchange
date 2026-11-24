@@ -60,3 +60,7 @@ wyłącznie dla łatwego testowania lokalnego.
 
 To wersja bazowa do dalszego rozwijania, a nie gotowa giełda produkcyjna.
 Nie zawiera prawdziwych pieniędzy, płatności ani integracji z brokerem.
+
+## WARNING
+
+THIS APP IS IN WORK AND AGTER IT FINISH ITS GONNA GO PRIVATE. GITHUB IS USED ONLY FOR WORKFLOWS AND BETTER AI INTEGRATION FOR SEARCHING FOR BUGS AND ERRORS.
