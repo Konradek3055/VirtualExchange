@@ -1,5 +1,7 @@
 package pl.virtualexchange.local
 
+import org.json.JSONArray
+import org.json.JSONObject
 import java.math.BigDecimal
 import java.math.RoundingMode
 import java.util.Random
@@ -10,7 +12,7 @@ import java.util.Random
  *  - maker-boty stawiają drabinki zleceń kupna/sprzedaży wokół ostatniej ceny,
  *  - trader-boty wysyłają zlecenia market o różnej wielkości (zdarzają się duże).
  */
-class OfflineMarket(seed: Long = System.nanoTime()) {
+class OfflineMarket(seed: Long = System.nanoTime(), restoredState: JSONObject? = null) {
     val engine = LocalEngine()
     val rnd = Random(seed)
     val playerId: Int
@@ -22,7 +24,8 @@ class OfflineMarket(seed: Long = System.nanoTime()) {
     private class Seed(val symbol: String, val name: String, val supply: String, val price: String)
 
     init {
-        playerId = engine.createAccount("Gracz", false, BigDecimal("10000")).id
+        if (restoredState == null) {
+            playerId = engine.createAccount("Gracz", false, BigDecimal("10000")).id
         val seeds = listOf(
             Seed("BTC", "Bitcoin (symulacja)", "1000", "65000"),
             Seed("ETH", "Ethereum (symulacja)", "10000", "3200"),
@@ -41,6 +44,57 @@ class OfflineMarket(seed: Long = System.nanoTime()) {
             traders.forEach { engine.grantAsset(it, s.symbol, traderShare) }
         }
         warmUp(WARMUP_STEPS)
+        } else {
+            require(restoredState.optInt("version") == 1) {
+                "Nieobsługiwana wersja zapisu offline"
+            }
+
+            engine.restore(restoredState.getJSONObject("engine"))
+            playerId = restoredState.getInt("playerId")
+
+            val makerRows = restoredState.getJSONArray("makers")
+            for (i in 0 until makerRows.length()) makers.add(makerRows.getInt(i))
+
+            val traderRows = restoredState.getJSONArray("traders")
+            for (i in 0 until traderRows.length()) traders.add(traderRows.getInt(i))
+
+            val refs = restoredState.getJSONObject("refPrices")
+            val keys = refs.keys()
+
+            while (keys.hasNext()) {
+                val symbol = keys.next()
+                refPrices[symbol] = BigDecimal(refs.getString(symbol))
+            }
+
+            simNow = restoredState.optLong("simNow", System.currentTimeMillis())
+
+            require(makers.isNotEmpty() && traders.isNotEmpty() && refPrices.isNotEmpty()) {
+                "Zapis offline nie zawiera konfiguracji botów"
+            }
+        }
+    }
+
+    /** Stan do trwałego zapisu na telefonie. */
+    fun snapshot(): JSONObject {
+        val makerRows = JSONArray()
+        makers.forEach { makerRows.put(it) }
+
+        val traderRows = JSONArray()
+        traders.forEach { traderRows.put(it) }
+
+        val refs = JSONObject()
+        refPrices.forEach { (symbol, price) ->
+            refs.put(symbol, price.toPlainString())
+        }
+
+        return JSONObject()
+            .put("version", 1)
+            .put("playerId", playerId)
+            .put("makers", makerRows)
+            .put("traders", traderRows)
+            .put("refPrices", refs)
+            .put("simNow", simNow)
+            .put("engine", engine.snapshot())
     }
 
     /** Symulowana historia: boty handlują "w przyspieszonym czasie", żeby wykres nie był pusty po starcie. */

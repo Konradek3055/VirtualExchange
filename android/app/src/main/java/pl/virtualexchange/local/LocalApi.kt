@@ -4,6 +4,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 import pl.virtualexchange.data.ApiError
 import java.math.BigDecimal
+import java.math.RoundingMode
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -44,6 +45,50 @@ object LocalApi {
         val parts = route.split("/")
         try {
             return when {
+                method == "GET" && route == "stats" -> {
+                    val cutoff = System.currentTimeMillis() - 86_400_000L
+                    val out = JSONObject()
+
+                    e.assets.values.forEach { asset ->
+                        val recent = e.recentTrades(asset.symbol, Int.MAX_VALUE)
+                            .filter { it.ts >= cutoff }
+                            .sortedBy { it.id }
+
+                        var volume = BigDecimal.ZERO
+                        recent.forEach { trade ->
+                            volume = volume.add(trade.price.multiply(trade.quantity))
+                        }
+
+                        val first = recent.firstOrNull()?.price
+                        val last = recent.lastOrNull()?.price
+                        val high = recent.maxOfOrNull { it.price }
+                        val low = recent.minOfOrNull { it.price }
+
+                        val change = if (first != null && first.signum() > 0 && last != null) {
+                            last.subtract(first)
+                                .multiply(BigDecimal("100"))
+                                .divide(first, 8, RoundingMode.HALF_UP)
+                                .toDouble()
+                        } else 0.0
+
+                        val holders = e.holderCount(asset.symbol)
+
+                        out.put(asset.symbol, JSONObject()
+                            .put("change_pct", Math.round(change * 10000.0) / 10000.0)
+                            .put(
+                                "volume_usd",
+                                if (recent.isEmpty()) "0"
+                                else volume.stripTrailingZeros().toPlainString()
+                            )
+                            .put("high", high?.toPlainString() ?: JSONObject.NULL)
+                            .put("low", low?.toPlainString() ?: JSONObject.NULL)
+                            .put("trades", recent.size)
+                            .put("holders", holders))
+                    }
+
+                    out.toString()
+                }
+
                 method == "GET" && route == "assets" ->
                     JSONArray().also { arr -> e.assets.values.sortedBy { it.symbol }.forEach { arr.put(assetJson(it)) } }.toString()
 

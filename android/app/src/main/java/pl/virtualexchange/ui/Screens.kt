@@ -324,7 +324,7 @@ fun MoreTab(store: Store, scope: CoroutineScope) {
             Text(
                 "Rynek działa na telefonie, bez serwera. Boty (market makerzy i traderzy) składają zlecenia przez ten sam silnik co gracz; " +
                     "ceny i świece powstają wyłącznie z dopasowanych zleceń. Historia przed startem jest wcześniej zasymulowana przez boty. " +
-                    "Stan nie jest zapisywany po zamknięciu aplikacji.",
+                    "Stan rynku jest zapisywany na telefonie i wraca po ponownym uruchomieniu aplikacji.",
                 style = MaterialTheme.typography.labelSmall,
             )
             OutlinedButton(onClick = {

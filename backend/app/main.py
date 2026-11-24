@@ -68,6 +68,82 @@ def assets():
         """).fetchall()
     return [dict(row) for row in rows]
 
+@app.get("/stats")
+def stats():
+    """Statystyki aktywów z transakcji z ostatnich 24 godzin."""
+    with connect() as db:
+        symbols = [r["symbol"] for r in db.execute("SELECT symbol FROM assets")]
+        rows = db.execute("""
+            SELECT symbol,price,quantity FROM trades
+            WHERE created_at >= datetime('now','-1 day')
+            ORDER BY id
+        """).fetchall()
+
+        holders = {
+            r["symbol"]: r["n"]
+            for r in db.execute("""
+                SELECT symbol,COUNT(*) AS n FROM balances
+                WHERE CAST(available AS REAL) + CAST(locked AS REAL) > 0
+                GROUP BY symbol
+            """)
+        }
+
+    acc = {
+        symbol: {
+            "open": None,
+            "last": None,
+            "high": None,
+            "low": None,
+            "volume": Decimal(0),
+            "trades": 0,
+        }
+        for symbol in symbols
+    }
+
+    for row in rows:
+        item = acc.get(row["symbol"])
+        if item is None:
+            continue
+
+        price = Decimal(row["price"])
+        quantity = Decimal(row["quantity"])
+
+        if item["open"] is None:
+            item["open"] = price
+
+        item["last"] = price
+        item["high"] = price if item["high"] is None else max(item["high"], price)
+        item["low"] = price if item["low"] is None else min(item["low"], price)
+        item["volume"] += price * quantity
+        item["trades"] += 1
+
+    result = {}
+
+    for symbol, item in acc.items():
+        change = Decimal(0)
+
+        if item["open"] is not None and item["open"] > 0:
+            change = (
+                (item["last"] - item["open"])
+                / item["open"]
+                * Decimal(100)
+            )
+
+        result[symbol] = {
+            "change_pct": round(float(change), 4),
+            "volume_usd": (
+                format(item["volume"].normalize(), "f")
+                if item["trades"] else "0"
+            ),
+            "high": str(item["high"]) if item["high"] is not None else None,
+            "low": str(item["low"]) if item["low"] is not None else None,
+            "trades": item["trades"],
+            "holders": holders.get(symbol, 0),
+        }
+
+    return result
+
+
 @app.get("/assets/{symbol}")
 def asset_detail(symbol:str):
     with connect() as db:

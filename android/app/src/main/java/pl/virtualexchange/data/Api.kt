@@ -13,6 +13,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import pl.virtualexchange.local.LocalApi
 import pl.virtualexchange.local.OfflineMarket
+import pl.virtualexchange.local.OfflinePersistence
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -45,6 +46,7 @@ object Api {
     var offline = true
         private set
 
+    private var appContext: Context? = null
     private var market: OfflineMarket? = null
     private var botJob: Job? = null
     private val botScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -58,6 +60,7 @@ object Api {
     val ticks = MutableSharedFlow<String>(extraBufferCapacity = 16)
 
     fun init(context: Context) {
+        appContext = context.applicationContext
         val p = context.getSharedPreferences("virtualexchange", Context.MODE_PRIVATE)
         prefs = p
         baseUrl = p.getString("baseUrl", baseUrl) ?: baseUrl
@@ -69,11 +72,39 @@ object Api {
     @Synchronized
     private fun localMarket(): OfflineMarket {
         var m = market
+
         if (m == null) {
-            m = OfflineMarket()
+            val context = appContext
+            val saved = context?.let { OfflinePersistence.load(it) }
+
+            m = try {
+                if (saved == null) OfflineMarket()
+                else OfflineMarket(restoredState = saved)
+            } catch (error: Exception) {
+                context?.let { OfflinePersistence.clear(it) }
+                OfflineMarket()
+            }
+
             market = m
+            persistOffline(m)
         }
+
         return m
+    }
+
+    @Synchronized
+    private fun persistOffline(m: OfflineMarket) {
+        val context = appContext ?: return
+
+        try {
+            OfflinePersistence.save(context, m.snapshot())
+        } catch (error: Exception) {
+            android.util.Log.e(
+                "VirtualExchange",
+                "Nie udało się zapisać rynku offline",
+                error,
+            )
+        }
     }
 
     fun setOffline(value: Boolean) {
@@ -85,7 +116,12 @@ object Api {
     /** Nowa symulacja od zera (nowe saldo gracza, nowe boty i historia). */
     fun resetOffline() {
         botJob?.cancel()
-        synchronized(this) { market = null }
+
+        synchronized(this) {
+            market = null
+            appContext?.let { OfflinePersistence.clear(it) }
+        }
+
         applyMode()
     }
 
@@ -95,10 +131,17 @@ object Api {
         if (offline) {
             disconnect()
             botJob = botScope.launch {
-                val m = localMarket()          // pierwsze użycie buduje rynek i historię (kilkaset ms)
+                val m = localMarket()
+                var stepCount = 0
+
                 while (isActive) {
                     delay(1500)
                     m.step()
+                    stepCount++
+
+                    // Zapis botów co 5 kroków.
+                    if (stepCount % 5 == 0) persistOffline(m)
+
                     ticks.tryEmit("*")
                 }
             }
@@ -121,7 +164,15 @@ object Api {
 
     private suspend fun call(method: String, path: String, data: JSONObject?, auth: Boolean): String =
         withContext(Dispatchers.IO) {
-            if (offline) return@withContext LocalApi.handle(localMarket(), method, path, data)
+            if (offline) {
+                val local = localMarket()
+                val response = LocalApi.handle(local, method, path, data)
+
+                // Zlecenia, anulowanie i tworzenie aktywów zapisujemy natychmiast.
+                if (method != "GET") persistOffline(local)
+
+                return@withContext response
+            }
             val b = Request.Builder().url(baseUrl + path)
             if (auth) b.header("X-API-Key", apiKey)
             when (method) {

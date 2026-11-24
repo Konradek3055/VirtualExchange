@@ -280,3 +280,26 @@ def test_random_trading_keeps_books_consistent(client):
             my_orders[i].append(r.json()["order_id"])
     check_invariants(client)
     assert sum(len(client.get(f"/trades/{s}").json()) for s in syms) > 10
+
+
+
+def test_stats_24h(client):
+    owner, buyer = world(client)
+
+    order(client, owner, "BTCX", "sell", "limit", 1, 100)
+    order(client, buyer, "BTCX", "buy", "limit", 1, 100)
+
+    order(client, owner, "BTCX", "sell", "limit", 1, 110)
+    order(client, buyer, "BTCX", "buy", "limit", 1, 110)
+
+    stats = client.get("/stats").json()
+    btc = stats["BTCX"]
+
+    assert btc["trades"] == 2
+    assert btc["volume_usd"] == "210"
+    assert btc["holders"] == 2
+    assert btc["high"] == "110"
+    assert btc["low"] == "100"
+    assert abs(btc["change_pct"] - 10.0) < 1e-6
+
+    assert stats["ETH"]["trades"] == 0

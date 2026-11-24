@@ -1,5 +1,7 @@
 package pl.virtualexchange.local
 
+import org.json.JSONArray
+import org.json.JSONObject
 import java.math.BigDecimal
 import java.math.RoundingMode
 
@@ -316,6 +318,215 @@ class LocalEngine(var clock: () -> Long = { System.currentTimeMillis() }) {
             }
         }
         if (trades.size > MAX_TRADES) trades.subList(0, trades.size - MAX_TRADES * 3 / 4).clear()
+    }
+
+    /** Pełny zapis kont, aktywów, sald, zleceń i transakcji. */
+    fun snapshot(): JSONObject = synchronized(lock) {
+        val accountRows = JSONArray()
+
+        accounts.values.forEach { account ->
+            val balanceRows = JSONArray()
+
+            account.balances.forEach { (symbol, balance) ->
+                balanceRows.put(JSONObject()
+                    .put("symbol", symbol)
+                    .put("available", balance.available.toPlainString())
+                    .put("locked", balance.locked.toPlainString()))
+            }
+
+            accountRows.put(JSONObject()
+                .put("id", account.id)
+                .put("name", account.name)
+                .put("isBot", account.isBot)
+                .put("balances", balanceRows))
+        }
+
+        val assetRows = JSONArray()
+
+        assets.values.forEach { asset ->
+            assetRows.put(JSONObject()
+                .put("symbol", asset.symbol)
+                .put("name", asset.name)
+                .put("description", asset.description)
+                .put("creatorId", asset.creatorId ?: JSONObject.NULL)
+                .put("supply", asset.supply.toPlainString())
+                .put("lastPrice", asset.lastPrice.toPlainString())
+                .put("createdAt", asset.createdAt))
+        }
+
+        val orderRows = JSONArray()
+
+        orders.values.forEach { order ->
+            orderRows.put(JSONObject()
+                .put("id", order.id)
+                .put("accountId", order.accountId)
+                .put("symbol", order.symbol)
+                .put("side", order.side)
+                .put("type", order.type)
+                .put("quantity", order.quantity.toPlainString())
+                .put("remaining", order.remaining.toPlainString())
+                .put("price", order.price?.toPlainString() ?: JSONObject.NULL)
+                .put("status", order.status)
+                .put("createdAt", order.createdAt))
+        }
+
+        val tradeRows = JSONArray()
+
+        trades.forEach { trade ->
+            tradeRows.put(JSONObject()
+                .put("id", trade.id)
+                .put("symbol", trade.symbol)
+                .put("price", trade.price.toPlainString())
+                .put("quantity", trade.quantity.toPlainString())
+                .put("buyOrderId", trade.buyOrderId)
+                .put("sellOrderId", trade.sellOrderId)
+                .put("buyerId", trade.buyerId)
+                .put("sellerId", trade.sellerId)
+                .put("ts", trade.ts))
+        }
+
+        val issuedRows = JSONObject()
+        issued.forEach { (symbol, amount) ->
+            issuedRows.put(symbol, amount.toPlainString())
+        }
+
+        JSONObject()
+            .put("version", 1)
+            .put("accountSeq", accountSeq)
+            .put("orderSeq", orderSeq)
+            .put("tradeSeq", tradeSeq)
+            .put("accounts", accountRows)
+            .put("assets", assetRows)
+            .put("orders", orderRows)
+            .put("trades", tradeRows)
+            .put("issued", issuedRows)
+    }
+
+    /** Odtwarza stan, w tym otwarte zlecenia i ich blokady. */
+    fun restore(snapshot: JSONObject) = synchronized(lock) {
+        require(snapshot.optInt("version") == 1) {
+            "Nieobsługiwana wersja zapisu offline"
+        }
+
+        accounts.clear()
+        assets.clear()
+        orders.clear()
+        open.clear()
+        trades.clear()
+        issued.clear()
+
+        val accountRows = snapshot.getJSONArray("accounts")
+
+        for (i in 0 until accountRows.length()) {
+            val row = accountRows.getJSONObject(i)
+            val account = Account(
+                row.getInt("id"),
+                row.getString("name"),
+                row.getBoolean("isBot"),
+            )
+
+            val balanceRows = row.getJSONArray("balances")
+
+            for (j in 0 until balanceRows.length()) {
+                val balance = balanceRows.getJSONObject(j)
+                val b = account.bal(balance.getString("symbol"))
+
+                b.available = BigDecimal(balance.getString("available"))
+                b.locked = BigDecimal(balance.getString("locked"))
+            }
+
+            accounts[account.id] = account
+        }
+
+        val assetRows = snapshot.getJSONArray("assets")
+
+        for (i in 0 until assetRows.length()) {
+            val row = assetRows.getJSONObject(i)
+            val creator = if (row.isNull("creatorId")) null else row.getInt("creatorId")
+
+            val asset = Asset(
+                row.getString("symbol"),
+                row.getString("name"),
+                row.getString("description"),
+                creator,
+                BigDecimal(row.getString("supply")),
+                BigDecimal(row.getString("lastPrice")),
+                row.getLong("createdAt"),
+            )
+
+            assets[asset.symbol] = asset
+        }
+
+        val orderRows = snapshot.getJSONArray("orders")
+
+        for (i in 0 until orderRows.length()) {
+            val row = orderRows.getJSONObject(i)
+            val price = if (row.isNull("price")) null
+                else BigDecimal(row.getString("price"))
+
+            val order = Order(
+                row.getInt("id"),
+                row.getInt("accountId"),
+                row.getString("symbol"),
+                row.getString("side"),
+                row.getString("type"),
+                BigDecimal(row.getString("quantity")),
+                BigDecimal(row.getString("remaining")),
+                price,
+                row.getString("status"),
+                row.getLong("createdAt"),
+            )
+
+            orders[order.id] = order
+
+            if (order.status == "OPEN" || order.status == "PARTIAL") {
+                open[order.id] = order
+            }
+        }
+
+        val tradeRows = snapshot.getJSONArray("trades")
+
+        for (i in 0 until tradeRows.length()) {
+            val row = tradeRows.getJSONObject(i)
+
+            trades.add(Trade(
+                row.getInt("id"),
+                row.getString("symbol"),
+                BigDecimal(row.getString("price")),
+                BigDecimal(row.getString("quantity")),
+                row.getInt("buyOrderId"),
+                row.getInt("sellOrderId"),
+                row.getInt("buyerId"),
+                row.getInt("sellerId"),
+                row.getLong("ts"),
+            ))
+        }
+
+        val issuedRows = snapshot.getJSONObject("issued")
+        val keys = issuedRows.keys()
+
+        while (keys.hasNext()) {
+            val symbol = keys.next()
+            issued[symbol] = BigDecimal(issuedRows.getString(symbol))
+        }
+
+        accountSeq = snapshot.getInt("accountSeq")
+        orderSeq = snapshot.getInt("orderSeq")
+        tradeSeq = snapshot.getInt("tradeSeq")
+
+        check(accounts.isNotEmpty() && assets.isNotEmpty()) {
+            "Zapis offline jest niekompletny"
+        }
+
+        checkInvariants()
+    }
+
+    fun holderCount(symbol: String): Int = synchronized(lock) {
+        accounts.values.count { account ->
+            val balance = account.balances[symbol]
+            balance != null &&
+                balance.available.add(balance.locked).signum() > 0
+        }
     }
 
     /** Kontrola spójności księgowości (testy): stała podaż, brak ujemnych sald, blokady == aktywne zlecenia. */
