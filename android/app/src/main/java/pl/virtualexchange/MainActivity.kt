@@ -37,12 +37,12 @@ import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import pl.virtualexchange.data.Api
-import pl.virtualexchange.ui.ChartTab
-import pl.virtualexchange.ui.MarketTab
+import pl.virtualexchange.ui.TerminalChartTab
+import pl.virtualexchange.ui.TerminalMarketTab
 import pl.virtualexchange.ui.MoreTab
-import pl.virtualexchange.ui.PortfolioTab
+import pl.virtualexchange.ui.TerminalPortfolioTab
 import pl.virtualexchange.ui.Store
-import pl.virtualexchange.ui.TradeTab
+import pl.virtualexchange.ui.TerminalTradeTab
 import pl.virtualexchange.ui.VeTheme
 
 class MainActivity : ComponentActivity() {
@@ -126,10 +126,10 @@ fun ExchangeApp() {
     ) { padding ->
         Box(Modifier.padding(padding)) {
             when (tab) {
-                0 -> MarketTab(store) { tab = 1 }
-                1 -> ChartTab(store) { tab = 2 }
-                2 -> TradeTab(store, scope)
-                3 -> PortfolioTab(store, scope)
+                0 -> TerminalMarketTab(store) { tab = 1 }
+                1 -> TerminalChartTab(store) { tab = 2 }
+                2 -> TerminalTradeTab(store, scope)
+                3 -> TerminalPortfolioTab(store, scope)
                 else -> MoreTab(store, scope)
             }
         }
