@@ -25,6 +25,8 @@ import pl.virtualexchange.data.Candle
 import pl.virtualexchange.data.Level
 import pl.virtualexchange.data.fmt
 import pl.virtualexchange.data.money
+import java.math.BigDecimal
+import java.math.RoundingMode
 
 private val BG = Color(0xFF080B10)
 private val PANEL = Color(0xFF101720)
@@ -202,6 +204,10 @@ fun TerminalMarketTab(store: Store, onOpen: () -> Unit) {
 
 @Composable
 fun TerminalChartTab(store: Store, onTrade: () -> Unit) {
+    val scope = rememberCoroutineScope()
+    LaunchedEffect(store.interval) {
+        try { store.refreshMarket() } catch (_: Exception) {}
+    }
     val stat = store.stats.optJSONObject(store.selected)
     val asset = store.assets.firstOrNull {
         it.optString("symbol") == store.selected
@@ -237,7 +243,16 @@ fun TerminalChartTab(store: Store, onTrade: () -> Unit) {
                             color = MUTED, fontSize = 10.sp
                         )
                     }
-                    Text("1 MIN", color = BLUE, fontSize = 10.sp)
+                    listOf("1m" to "1M", "5m" to "5M", "1h" to "1H").forEach { (key, label) ->
+                        Text(
+                            label,
+                            color = if (store.interval == key) BLUE else MUTED,
+                            fontSize = 11.sp, fontWeight = FontWeight.Bold,
+                            modifier = Modifier
+                                .clickable { store.interval = key }
+                                .padding(horizontal = 7.dp, vertical = 5.dp)
+                        )
+                    }
                 }
                 Spacer(Modifier.height(8.dp))
                 Row(verticalAlignment = Alignment.Bottom) {
@@ -280,6 +295,40 @@ fun TerminalChartTab(store: Store, onTrade: () -> Unit) {
                     Metric("MAKSIMUM", stat?.optString("high") ?: "—", Modifier.weight(1f))
                     Metric("MINIMUM", stat?.optString("low") ?: "—", Modifier.weight(1f))
                     Metric("TRANSAKCJE", stat?.optInt("trades")?.toString() ?: "0", Modifier.weight(1f))
+                }
+            }
+
+            item {
+                Panel {
+                    Label("Informacje o aktywie")
+                    Spacer(Modifier.height(6.dp))
+                    val desc = asset?.optString("description").orEmpty()
+                    if (desc.isNotBlank()) Text(desc, color = TXT, fontSize = 11.sp)
+                    Row(Modifier.fillMaxWidth().padding(top = 6.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("Podaż całkowita (stała)", color = MUTED, fontSize = 11.sp)
+                        Text(fmt(asset?.optString("total_supply", "0") ?: "0"), color = TXT, fontSize = 11.sp)
+                    }
+                    Row(Modifier.fillMaxWidth().padding(top = 4.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("Posiadacze", color = MUTED, fontSize = 11.sp)
+                        Text(stat?.optInt("holders")?.toString() ?: "0", color = TXT, fontSize = 11.sp)
+                    }
+                    if (!Api.offline) {
+                        OutlinedButton(
+                            onClick = {
+                                scope.launch {
+                                    try {
+                                        val r = Api.post("assets/${store.selected}/report", JSONObject())
+                                        store.message = "Zgłoszono (${r.optInt("reports")})" +
+                                            if (r.optBoolean("flagged")) " · oznaczone do moderacji" else ""
+                                    } catch (e: Exception) {
+                                        store.message = e.message ?: "Błąd zgłoszenia"
+                                    }
+                                }
+                            },
+                            Modifier.fillMaxWidth().padding(top = 8.dp)
+                        ) { Text("Zgłoś podejrzane aktywo", fontSize = 11.sp) }
+                        if (store.message.isNotBlank()) Text(store.message, color = MUTED, fontSize = 10.sp)
+                    }
                 }
             }
 
@@ -482,6 +531,18 @@ fun TerminalTradeTab(store: Store, scope: CoroutineScope) {
                         label = { Text("Ilość · ${store.selected}") },
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal)
                     )
+                    Row(
+                        Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        listOf(25, 50, 75, 100).forEach { pct ->
+                            OutlinedButton(
+                                onClick = { qty = pctQty(store, side, kind, price, pct) },
+                                Modifier.weight(1f),
+                                contentPadding = PaddingValues(0.dp)
+                            ) { Text("$pct%", fontSize = 11.sp) }
+                        }
+                    }
 
                     if (kind == "limit") {
                         OutlinedTextField(
@@ -699,4 +760,21 @@ fun TerminalPortfolioTab(store: Store, scope: CoroutineScope) {
             }
         }
     }
+}
+
+/** Ilość odpowiadająca procentowi dostępnego salda (kupno: USD / cena, sprzedaż: dostępne aktywo). */
+private fun pctQty(store: Store, side: String, kind: String, price: String, pct: Int): String {
+    val symbol = if (side == "buy") "USD" else store.selected
+    val available = store.portfolio.firstOrNull { it.optString("symbol") == symbol }
+        ?.optString("available")?.toBigDecimalOrNull() ?: return ""
+    val share = available.multiply(BigDecimal(pct)).divide(BigDecimal(100))
+    val result = if (side == "buy") {
+        val p = (if (kind == "limit") price.toBigDecimalOrNull()
+                 else store.asks.firstOrNull()?.price?.toBigDecimalOrNull()) ?: return ""
+        if (p.signum() <= 0) return ""
+        share.divide(p, 8, RoundingMode.DOWN)
+    } else {
+        share.setScale(8, RoundingMode.DOWN)
+    }
+    return result.stripTrailingZeros().toPlainString()
 }

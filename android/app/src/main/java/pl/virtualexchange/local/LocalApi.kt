@@ -132,8 +132,13 @@ object LocalApi {
                 method == "GET" && parts[0] == "candles" && parts.size == 2 -> {
                     val limit = query.split("&").firstOrNull { it.startsWith("limit=") }
                         ?.removePrefix("limit=")?.toIntOrNull()?.coerceIn(1, 500) ?: 100
+                    val bucketMs = when (query.split("&").firstOrNull { it.startsWith("interval=") }?.removePrefix("interval=")) {
+                        "5m" -> 300_000L
+                        "1h" -> 3_600_000L
+                        else -> 60_000L
+                    }
                     JSONArray().also { arr ->
-                        e.candles(parts[1].uppercase(), 60_000L, limit).forEach {
+                        e.candles(parts[1].uppercase(), bucketMs, limit).forEach {
                             arr.put(JSONObject().put("time", time(it.bucketMs).substring(0, 16))
                                 .put("open", it.open.toDouble()).put("high", it.high.toDouble())
                                 .put("low", it.low.toDouble()).put("close", it.close.toDouble())

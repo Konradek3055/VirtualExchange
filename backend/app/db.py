@@ -65,6 +65,12 @@ def init_db():
             seller_id INTEGER NOT NULL,
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
         );
+        CREATE TABLE IF NOT EXISTS asset_reports(
+            symbol TEXT NOT NULL REFERENCES assets(symbol),
+            account_id INTEGER NOT NULL REFERENCES accounts(id),
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY(symbol,account_id)
+        );
         """)
         cols = {r[1] for r in db.execute("PRAGMA table_info(orders)")}
         if "price_i" not in cols:   # migracja starszych baz: cena jako liczba całkowita (cena*1e8)

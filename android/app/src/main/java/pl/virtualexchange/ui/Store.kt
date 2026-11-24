@@ -22,6 +22,7 @@ class Store {
     var trades by mutableStateOf(listOf<JSONObject>())
     var candles by mutableStateOf(listOf<Candle>())
     var selected by mutableStateOf("BTC")
+    var interval by mutableStateOf("1m")
     var status by mutableStateOf("Łączenie…")
     var accountError by mutableStateOf("")
     var message by mutableStateOf("")
@@ -35,7 +36,7 @@ class Store {
         bids = parseLevels(book.optJSONArray("bids"))
         asks = parseLevels(book.optJSONArray("asks"))
         trades = Api.getArray("trades/$symbol").objects().take(30)
-        candles = parseCandles(Api.getArray("candles/$symbol?limit=60"))
+        candles = parseCandles(Api.getArray("candles/$symbol?limit=60&interval=$interval"))
         stats = try {
             Api.getObject("stats")
         } catch (_: Exception) {

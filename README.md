@@ -49,11 +49,15 @@ wyłącznie dla łatwego testowania lokalnego.
 - aplikacja Compose (ciemny motyw w stylu terminala): Rynek, Handel (wykres świec OHLC z wolumenem, order book
   z paskami głębokości, formularz LIMIT/MARKET, historia transakcji), Portfel (wartość wg ostatnich cen),
   Zlecenia (anulowanie), Więcej (konto, serwer, nowe aktywo); odświeżanie przez WebSocket + zapasowo co 5 s,
-- tworzenie własnych aktywów (unikalny ticker, stała podaż, twórca nie ustawia ceny).
+- tworzenie własnych aktywów (unikalny ticker, stała podaż, twórca nie ustawia ceny, opłata emisji 100 USD i limit 3 aktywów na gracza),
+- świece 1M/5M/1H, panel informacji o aktywie, zgłaszanie podejrzanych aktywów (flaga po 3 zgłoszeniach),
+- przyciski 25/50/75/100% w formularzu zlecenia.
+
+Pełna lista wymagań i statusów: `docs/CHECKLISTA.md`.
 
 ## Znane ograniczenia
 - Konto demo (`demo-token`) i aktywa startowe mają saldo bez pokrycia w `total_supply` - tylko do testów lokalnych.
-- Brak Gradle Wrappera (CI używa Gradle 8.9). Brak: statystyk 24h (zmiana %, wolumen, liczba posiadaczy), logo aktywów, moderacji, firm i akcji.
+- Brak Gradle Wrappera (CI używa Gradle 8.9). Brak: logo aktywów, panelu moderatora, firm i akcji, PostgreSQL.
 - Tryb offline: logikę silnika i botów skompilowano i uruchomiono poza Androidem (kontrola niezmienników), ale bez zapisu stanu na dysku.
 - Kod Androida nie był kompilowany lokalnie (tylko kontrola składni) - pierwszą pełną weryfikacją jest GitHub Actions.
 - Klucze API w bazie jawnym tekstem, brak limitów zapytań - do dopracowania przed publicznym wdrożeniem.

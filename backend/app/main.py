@@ -4,8 +4,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from .db import init_db,connect
 from .schemas import CreateAccount,OrderIn,AssetCreate
 from .engine import place_order,cancel_order,seed
-from .assets import create_user_asset
+from .assets import asset_info, create_user_asset, report_asset
+import calendar
 import secrets
+import time
 import sqlite3
 from decimal import Decimal
 
@@ -147,10 +149,12 @@ def stats():
 @app.get("/assets/{symbol}")
 def asset_detail(symbol:str):
     with connect() as db:
-        row = db.execute("SELECT * FROM assets WHERE symbol=?",(symbol.upper(),)).fetchone()
-    if not row:
-        raise HTTPException(404,"Asset not found")
-    return dict(row)
+        return asset_info(db,symbol.upper())
+
+@app.post("/assets/{symbol}/report")
+def report(symbol:str,x_api_key:str|None=Header(default=None)):
+    account = account_from_key(x_api_key)
+    return report_asset(account["id"],symbol.upper())
 
 @app.post("/assets",status_code=201)
 def add_asset(body:AssetCreate,x_api_key:str|None=Header(default=None)):
@@ -213,24 +217,31 @@ def trades(symbol:str):
         ).fetchall()
     return [dict(r) for r in rows]
 
+INTERVALS={"1m":60,"5m":300,"1h":3600}
+
 @app.get("/candles/{symbol}")
-def candles(symbol:str,limit:int=100):
+def candles(symbol:str,limit:int=100,interval:str="1m"):
+    """Świece OHLCV z faktycznych transakcji. interval: 1m, 5m, 1h."""
+    if interval not in INTERVALS:
+        raise HTTPException(400,"interval must be one of 1m, 5m, 1h")
+    sec=INTERVALS[interval]
     limit = max(1,min(limit,500))
     with connect() as db:
         rows = db.execute(
             "SELECT price,quantity,created_at FROM trades WHERE symbol=? ORDER BY id DESC LIMIT ?",
-            (symbol.upper(),limit*60)
+            (symbol.upper(),min(limit*60*(sec//60),50000))
         ).fetchall()
 
     result = {}
     for row in reversed(rows):
-        minute = row["created_at"][:16]
+        ts = calendar.timegm(time.strptime(row["created_at"],"%Y-%m-%d %H:%M:%S"))
+        label = time.strftime("%Y-%m-%d %H:%M",time.gmtime(ts//sec*sec))
         p = float(row["price"])
         q = float(row["quantity"])
-        if minute not in result:
-            result[minute] = {"time":minute,"open":p,"high":p,"low":p,"close":p,"volume":q}
+        if label not in result:
+            result[label] = {"time":label,"open":p,"high":p,"low":p,"close":p,"volume":q}
         else:
-            c = result[minute]
+            c = result[label]
             c["high"] = max(c["high"],p)
             c["low"] = min(c["low"],p)
             c["close"] = p
