@@ -2,9 +2,17 @@ package pl.virtualexchange.data
 
 import android.content.Context
 import android.content.SharedPreferences
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import pl.virtualexchange.local.LocalApi
+import pl.virtualexchange.local.OfflineMarket
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -33,6 +41,14 @@ object Api {
     var baseUrl = "http://10.0.2.2:8000/"
     var apiKey = "demo-token"
 
+    /** true = tryb offline: lokalny silnik + boty na telefonie, bez serwera (domyślnie). */
+    var offline = true
+        private set
+
+    private var market: OfflineMarket? = null
+    private var botJob: Job? = null
+    private val botScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+
     private var prefs: SharedPreferences? = null
     private val client = OkHttpClient.Builder().pingInterval(20, TimeUnit.SECONDS).build()
     private val json = "application/json; charset=utf-8".toMediaType()
@@ -46,6 +62,52 @@ object Api {
         prefs = p
         baseUrl = p.getString("baseUrl", baseUrl) ?: baseUrl
         apiKey = p.getString("apiKey", apiKey) ?: apiKey
+        offline = p.getBoolean("offline", true)
+        applyMode()
+    }
+
+    @Synchronized
+    private fun localMarket(): OfflineMarket {
+        var m = market
+        if (m == null) {
+            m = OfflineMarket()
+            market = m
+        }
+        return m
+    }
+
+    fun setOffline(value: Boolean) {
+        offline = value
+        prefs?.edit()?.putBoolean("offline", value)?.apply()
+        applyMode()
+    }
+
+    /** Nowa symulacja od zera (nowe saldo gracza, nowe boty i historia). */
+    fun resetOffline() {
+        botJob?.cancel()
+        synchronized(this) { market = null }
+        applyMode()
+    }
+
+    private fun applyMode() {
+        botJob?.cancel()
+        botJob = null
+        if (offline) {
+            disconnect()
+            botJob = botScope.launch {
+                val m = localMarket()          // pierwsze użycie buduje rynek i historię (kilkaset ms)
+                while (isActive) {
+                    delay(1500)
+                    m.step()
+                    ticks.tryEmit("*")
+                }
+            }
+        }
+    }
+
+    fun pauseBots() {
+        botJob?.cancel()
+        botJob = null
     }
 
     fun save(url: String, key: String) {
@@ -59,6 +121,7 @@ object Api {
 
     private suspend fun call(method: String, path: String, data: JSONObject?, auth: Boolean): String =
         withContext(Dispatchers.IO) {
+            if (offline) return@withContext LocalApi.handle(localMarket(), method, path, data)
             val b = Request.Builder().url(baseUrl + path)
             if (auth) b.header("X-API-Key", apiKey)
             when (method) {
@@ -86,6 +149,7 @@ object Api {
 
     fun connect(symbol: String) {
         disconnect()
+        if (offline) return
         try {
             val url = baseUrl.replaceFirst("http", "ws") + "ws/" + symbol
             socket = client.newWebSocket(Request.Builder().url(url).build(), object : WebSocketListener() {

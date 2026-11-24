@@ -293,6 +293,7 @@ fun OrdersTab(store: Store, scope: CoroutineScope) {
 // ------------------------------------------------------------------ WIĘCEJ (konto, serwer, nowe aktywo)
 @Composable
 fun MoreTab(store: Store, scope: CoroutineScope) {
+    var offline by remember { mutableStateOf(Api.offline) }
     var url by remember { mutableStateOf(Api.baseUrl) }
     var key by remember { mutableStateOf(Api.apiKey) }
     var username by remember { mutableStateOf("") }
@@ -305,33 +306,61 @@ fun MoreTab(store: Store, scope: CoroutineScope) {
         pad.verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Text("KONTO I SERWER", Modifier.padding(top = 12.dp), style = MaterialTheme.typography.headlineSmall)
-        OutlinedTextField(url, { url = it }, label = { Text("Adres serwera") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-        OutlinedTextField(key, { key = it }, label = { Text("Klucz API") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+        Text("TRYB PRACY", Modifier.padding(top = 12.dp), style = MaterialTheme.typography.headlineSmall)
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Button(onClick = {
-                Api.save(url, key)
-                Api.connect(store.selected)
+            FilterChip(offline, {
+                Api.setOffline(true); offline = true
+                store.message = "Tryb offline: symulacja z botami"
                 scope.launch { store.refreshAll() }
-                store.message = "Zapisano ustawienia"
-            }) { Text("ZAPISZ") }
-            OutlinedButton(onClick = { key = "demo-token" }) { Text("KONTO DEMO") }
+            }, label = { Text("OFFLINE (boty)") })
+            FilterChip(!offline, {
+                Api.setOffline(false); offline = false
+                Api.connect(store.selected)
+                store.message = "Tryb online: serwer " + Api.baseUrl
+                scope.launch { store.refreshAll() }
+            }, label = { Text("ONLINE (serwer)") })
         }
-        OutlinedTextField(username, { username = it }, label = { Text("Nazwa nowego gracza (3-24, A-Z a-z 0-9 _)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-        OutlinedButton(onClick = {
-            Api.save(url, key)
-            scope.launch {
-                try {
-                    val r = Api.register(username)
-                    key = r.optString("api_key")
+        if (offline) {
+            Text(
+                "Rynek działa na telefonie, bez serwera. Boty (market makerzy i traderzy) składają zlecenia przez ten sam silnik co gracz; " +
+                    "ceny i świece powstają wyłącznie z dopasowanych zleceń. Historia przed startem jest wcześniej zasymulowana przez boty. " +
+                    "Stan nie jest zapisywany po zamknięciu aplikacji.",
+                style = MaterialTheme.typography.labelSmall,
+            )
+            OutlinedButton(onClick = {
+                Api.resetOffline()
+                store.message = "Nowa symulacja: 10 000 USD, nowe boty"
+                scope.launch { store.refreshAll() }
+            }) { Text("RESETUJ SYMULACJĘ") }
+        } else {
+            Text("KONTO I SERWER", style = MaterialTheme.typography.titleMedium)
+            OutlinedTextField(url, { url = it }, label = { Text("Adres serwera") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+            OutlinedTextField(key, { key = it }, label = { Text("Klucz API") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(onClick = {
                     Api.save(url, key)
-                    store.message = "Konto utworzone: 10 000 wirtualnych USD"
-                    store.refreshAll()
-                } catch (e: Exception) {
-                    store.message = e.message ?: "Błąd"
-                }
+                    Api.connect(store.selected)
+                    scope.launch { store.refreshAll() }
+                    store.message = "Zapisano ustawienia"
+                }) { Text("ZAPISZ") }
+                OutlinedButton(onClick = { key = "demo-token" }) { Text("KONTO DEMO") }
             }
-        }) { Text("UTWÓRZ KONTO") }
+            OutlinedTextField(username, { username = it }, label = { Text("Nazwa nowego gracza (3-24, A-Z a-z 0-9 _)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+            OutlinedButton(onClick = {
+                Api.save(url, key)
+                scope.launch {
+                    try {
+                        val r = Api.register(username)
+                        key = r.optString("api_key")
+                        Api.save(url, key)
+                        store.message = "Konto utworzone: 10 000 wirtualnych USD"
+                        store.refreshAll()
+                    } catch (e: Exception) {
+                        store.message = e.message ?: "Błąd"
+                    }
+                }
+            }) { Text("UTWÓRZ KONTO") }
+        }
 
         HorizontalDivider(Modifier.padding(vertical = 8.dp))
         Text("NOWE AKTYWO", style = MaterialTheme.typography.headlineSmall)

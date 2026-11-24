@@ -67,7 +67,7 @@ fun ExchangeApp() {
             }
         }
     }
-    DisposableEffect(Unit) { onDispose { Api.disconnect() } }
+    DisposableEffect(Unit) { onDispose { Api.disconnect(); Api.pauseBots() } }
 
     Scaffold(
         topBar = {

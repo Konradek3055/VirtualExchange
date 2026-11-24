@@ -23,6 +23,10 @@ Klucz demo: `demo-token`. To wyłącznie lokalny klucz developerski — przed wd
 należy skonfigurować własne konta, hasła i bezpieczne tokeny.
 
 ## Android
+**Tryb offline (domyślny):** aplikacja działa bez serwera - na telefonie chodzi lokalny silnik giełdy i boty
+(market makerzy + traderzy). Boty składają zwykłe zlecenia przez ten sam silnik co gracz, więc ceny i świece
+powstają wyłącznie z dopasowanych zleceń. Przełącznik **OFFLINE / ONLINE** jest w zakładce Więcej.
+Offline: stan nie jest zapisywany po zamknięciu aplikacji (przycisk „Resetuj symulację" zaczyna od nowa).
 Otwórz folder `android/` w Android Studio (Jellyfish lub nowsze), poczekaj na synchronizację Gradle i uruchom
 konfigurację `app`.
 
@@ -50,6 +54,7 @@ wyłącznie dla łatwego testowania lokalnego.
 ## Znane ograniczenia
 - Konto demo (`demo-token`) i aktywa startowe mają saldo bez pokrycia w `total_supply` - tylko do testów lokalnych.
 - Brak Gradle Wrappera (CI używa Gradle 8.9). Brak: statystyk 24h (zmiana %, wolumen, liczba posiadaczy), logo aktywów, moderacji, firm i akcji.
+- Tryb offline: logikę silnika i botów skompilowano i uruchomiono poza Androidem (kontrola niezmienników), ale bez zapisu stanu na dysku.
 - Kod Androida nie był kompilowany lokalnie (tylko kontrola składni) - pierwszą pełną weryfikacją jest GitHub Actions.
 - Klucze API w bazie jawnym tekstem, brak limitów zapytań - do dopracowania przed publicznym wdrożeniem.
 

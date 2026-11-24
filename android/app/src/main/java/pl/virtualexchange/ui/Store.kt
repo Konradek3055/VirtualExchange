@@ -51,9 +51,9 @@ class Store {
         try {
             assets = Api.getArray("assets").objects()
             refreshMarket()
-            status = "ONLINE"
+            status = if (Api.offline) "OFFLINE · symulacja z botami" else "ONLINE"
         } catch (e: Exception) {
-            status = "OFFLINE: ${e.message}"
+            status = "BŁĄD SERWERA: ${e.message}"
         }
         refreshAccount()
     }
