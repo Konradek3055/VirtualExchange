@@ -1,12 +1,17 @@
 
+import os
 import sqlite3
 from pathlib import Path
 from contextlib import contextmanager
 
-DB_PATH = Path(__file__).resolve().parent.parent / "virtualexchange.sqlite3"
+DEFAULT_DB_PATH = Path(__file__).resolve().parent.parent / "virtualexchange.sqlite3"
+
+def db_path():
+    """Ścieżka bazy; można nadpisać zmienną VE_DB_PATH (np. w testach)."""
+    return Path(os.environ.get("VE_DB_PATH") or DEFAULT_DB_PATH)
 
 def connect():
-    db = sqlite3.connect(DB_PATH, timeout=30)
+    db = sqlite3.connect(db_path(), timeout=30)
     db.row_factory = sqlite3.Row
     db.execute("PRAGMA foreign_keys=ON")
     db.execute("PRAGMA busy_timeout=30000")
@@ -45,6 +50,7 @@ def init_db():
             quantity TEXT NOT NULL,
             remaining TEXT NOT NULL,
             price TEXT,
+            price_i INTEGER,
             status TEXT NOT NULL,
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
         );
@@ -60,7 +66,12 @@ def init_db():
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
         );
         """)
+        cols = {r[1] for r in db.execute("PRAGMA table_info(orders)")}
+        if "price_i" not in cols:   # migracja starszych baz: cena jako liczba całkowita (cena*1e8)
+            db.execute("ALTER TABLE orders ADD COLUMN price_i INTEGER")
+            db.execute("UPDATE orders SET price_i=CAST(ROUND(CAST(price AS REAL)*100000000) AS INTEGER) WHERE price IS NOT NULL")
         db.execute("CREATE INDEX IF NOT EXISTS idx_orders_book ON orders(symbol,side,status,id)")
+        db.execute("CREATE INDEX IF NOT EXISTS idx_orders_match ON orders(symbol,side,status,price_i,id)")
         db.execute("CREATE INDEX IF NOT EXISTS idx_trades_symbol ON trades(symbol,id)")
         db.commit()
 

@@ -6,6 +6,8 @@ from .schemas import CreateAccount,OrderIn,AssetCreate
 from .engine import place_order,cancel_order,seed
 from .assets import create_user_asset
 import secrets
+import sqlite3
+from decimal import Decimal
 
 app = FastAPI(title="VirtualExchange API",version="1.0")
 app.add_middleware(CORSMiddleware,allow_origins=["*"],allow_methods=["*"],allow_headers=["*"])
@@ -35,10 +37,10 @@ def create_account(body:CreateAccount):
     try:
         with connect() as db:
             cur = db.execute("INSERT INTO accounts(username,api_key) VALUES(?,?)",(body.username,key))
-            db.execute("INSERT INTO balances(account_id,symbol,available,locked) VALUES(?,?,?,?,?)",
+            db.execute("INSERT INTO balances(account_id,symbol,available,locked) VALUES(?,?,?,?)",
                 (cur.lastrowid,"USD","10000","0"))
             db.commit()
-    except Exception:
+    except sqlite3.IntegrityError:
         raise HTTPException(409,"Username already exists")
     return {"id":cur.lastrowid,"username":body.username,"api_key":key,"starting_usd":"10000"}
 
@@ -79,21 +81,26 @@ def add_asset(body:AssetCreate,x_api_key:str|None=Header(default=None)):
     account = account_from_key(x_api_key)
     return create_user_asset(account["id"],body)
 
+async def notify(symbol):
+    for ws in list(sockets.get(symbol,set())):
+        try:
+            await ws.send_json({"type":"update","symbol":symbol})
+        except Exception:
+            sockets[symbol].discard(ws)
+
 @app.post("/orders")
 async def add_order(body:OrderIn,x_api_key:str|None=Header(default=None)):
     account = account_from_key(x_api_key)
     result = place_order(account["id"],body)
-    for ws in list(sockets.get(body.symbol.upper(),set())):
-        try:
-            await ws.send_json({"type":"update","symbol":body.symbol.upper()})
-        except Exception:
-            sockets[body.symbol.upper()].discard(ws)
+    await notify(result["symbol"])
     return result
 
 @app.delete("/orders/{order_id}")
-def delete_order(order_id:int,x_api_key:str|None=Header(default=None)):
+async def delete_order(order_id:int,x_api_key:str|None=Header(default=None)):
     account = account_from_key(x_api_key)
-    return cancel_order(account["id"],order_id)
+    result = cancel_order(account["id"],order_id)
+    await notify(result["symbol"])
+    return result
 
 @app.get("/orders")
 def my_orders(x_api_key:str|None=Header(default=None)):
@@ -109,15 +116,17 @@ def my_orders(x_api_key:str|None=Header(default=None)):
 def orderbook(symbol:str):
     with connect() as db:
         rows = db.execute("""
-            SELECT side,price,SUM(CAST(remaining AS REAL)) quantity
-            FROM orders WHERE symbol=? AND status IN ('OPEN','PARTIAL') AND price IS NOT NULL
-            GROUP BY side,price
+            SELECT side,price,price_i,remaining FROM orders
+            WHERE symbol=? AND status IN ('OPEN','PARTIAL') AND price_i IS NOT NULL
         """,(symbol.upper(),)).fetchall()
-    bids = sorted([dict(r) for r in rows if r["side"]=="buy"],
-                  key=lambda r:float(r["price"]),reverse=True)[:30]
-    asks = sorted([dict(r) for r in rows if r["side"]=="sell"],
-                  key=lambda r:float(r["price"]))[:30]
-    return {"symbol":symbol.upper(),"bids":bids,"asks":asks}
+    levels = {"buy":{}, "sell":{}}
+    for r in rows:
+        lvl = levels[r["side"]].setdefault(r["price_i"],{"price":r["price"],"qty":Decimal(0)})
+        lvl["qty"] += Decimal(r["remaining"])
+    def out(side,reverse):
+        return [{"price":v["price"],"quantity":str(v["qty"])}
+                for k,v in sorted(levels[side].items(),reverse=reverse)[:30]]
+    return {"symbol":symbol.upper(),"bids":out("buy",True),"asks":out("sell",False)}
 
 @app.get("/trades/{symbol}")
 def trades(symbol:str):

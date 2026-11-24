@@ -6,3 +6,5 @@ backend/virtualexchange.sqlite3
 build/
 local.properties
 .idea/
+.pytest_cache/
+*.sqlite3

@@ -26,13 +26,15 @@ należy skonfigurować własne konta, hasła i bezpieczne tokeny.
 Otwórz folder `android/` w Android Studio (Jellyfish lub nowsze), poczekaj na synchronizację Gradle i uruchom
 konfigurację `app`.
 
-Domyślny adres API:
-- emulator Android: `http://10.0.2.2:8000/`
-- telefon: zmień `BASE_URL` w `android/app/src/main/java/pl/virtualexchange/data/Api.kt`
-  na adres IP komputera w tej samej sieci Wi-Fi.
+Adres serwera i klucz API ustawiasz w aplikacji: **Więcej -> Konto i serwer** (zapisują się na telefonie).
+Domyślnie: emulator `http://10.0.2.2:8000/`, telefon: IP komputera w tej samej sieci Wi-Fi, np. `http://192.168.1.20:8000/`.
+Tam samo założysz nowe konto (10 000 wirtualnych USD) albo wybierzesz konto demo.
 
 Na serwerze trzeba dopuścić połączenia z sieci lokalnej. Android ma włączony cleartext HTTP
 wyłącznie dla łatwego testowania lokalnego.
+
+## Testy
+`cd backend && python -m pytest -q` (szczegóły: `backend/TESTING.md`). CI uruchamia je razem z buildem APK.
 
 ## Zakres tej wersji
 - trwałe dane w SQLite (konta, salda, aktywa, zlecenia, transakcje),
@@ -40,7 +42,16 @@ wyłącznie dla łatwego testowania lokalnego.
 - blokowanie środków dla otwartych zleceń,
 - anulowanie zleceń,
 - REST API i WebSocket z aktualizacjami rynku,
-- natywna aplikacja Compose z ekranem rynku, portfelem i formularzem zlecenia.
+- aplikacja Compose (ciemny motyw w stylu terminala): Rynek, Handel (wykres świec OHLC z wolumenem, order book
+  z paskami głębokości, formularz LIMIT/MARKET, historia transakcji), Portfel (wartość wg ostatnich cen),
+  Zlecenia (anulowanie), Więcej (konto, serwer, nowe aktywo); odświeżanie przez WebSocket + zapasowo co 5 s,
+- tworzenie własnych aktywów (unikalny ticker, stała podaż, twórca nie ustawia ceny).
+
+## Znane ograniczenia
+- Konto demo (`demo-token`) i aktywa startowe mają saldo bez pokrycia w `total_supply` - tylko do testów lokalnych.
+- Brak Gradle Wrappera (CI używa Gradle 8.9). Brak: statystyk 24h (zmiana %, wolumen, liczba posiadaczy), logo aktywów, moderacji, firm i akcji.
+- Kod Androida nie był kompilowany lokalnie (tylko kontrola składni) - pierwszą pełną weryfikacją jest GitHub Actions.
+- Klucze API w bazie jawnym tekstem, brak limitów zapytań - do dopracowania przed publicznym wdrożeniem.
 
 To wersja bazowa do dalszego rozwijania, a nie gotowa giełda produkcyjna.
 Nie zawiera prawdziwych pieniędzy, płatności ani integracji z brokerem.
