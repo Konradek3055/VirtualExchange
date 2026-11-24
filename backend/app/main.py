@@ -217,13 +217,13 @@ def trades(symbol:str):
         ).fetchall()
     return [dict(r) for r in rows]
 
-INTERVALS={"1m":60,"5m":300,"1h":3600}
+INTERVALS={"1m":60,"3m":180,"5m":300,"15m":900,"30m":1800,"1h":3600,"4h":14400,"1d":86400}
 
 @app.get("/candles/{symbol}")
 def candles(symbol:str,limit:int=100,interval:str="1m"):
-    """Świece OHLCV z faktycznych transakcji. interval: 1m, 5m, 1h."""
+    """Świece OHLCV z faktycznych transakcji. interval: 1m, 3m, 5m, 15m, 30m, 1h, 4h, 1d."""
     if interval not in INTERVALS:
-        raise HTTPException(400,"interval must be one of 1m, 5m, 1h")
+        raise HTTPException(400,"interval must be one of 1m, 3m, 5m, 15m, 30m, 1h, 4h, 1d")
     sec=INTERVALS[interval]
     limit = max(1,min(limit,500))
     with connect() as db:

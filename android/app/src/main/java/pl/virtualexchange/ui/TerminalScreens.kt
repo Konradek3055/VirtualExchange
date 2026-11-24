@@ -7,7 +7,9 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.*
 import androidx.compose.foundation.shape.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.*
@@ -183,185 +185,159 @@ fun TerminalMarketTab(store: Store, onOpen: () -> Unit) {
                     }
                     Column(horizontalAlignment = Alignment.End) {
                         Text(
-                            "$" + fmt(a.optString("last_price", "0")),
-                            color = TXT, fontSize = 12.sp,
-                            fontFamily = FontFamily.Monospace
+                            fmtPx(a.optString("last_price", "0")),
+                            color = TXT, fontSize = 17.sp,
+                            fontWeight = FontWeight.Medium
                         )
-                        Text(
-                            "Vol. $" + fmt(stat?.optString("volume_usd", "0") ?: "0"),
-                            color = MUTED, fontSize = 9.sp
-                        )
-                    }
-                    Box(Modifier.width(62.dp), contentAlignment = Alignment.CenterEnd) {
                         Change(change(store, symbol))
                     }
                 }
-                HorizontalDivider(color = LINE)
+                HorizontalDivider(Modifier.padding(start = 56.dp), color = LINE)
             }
         }
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TerminalChartTab(store: Store, onTrade: () -> Unit) {
     val scope = rememberCoroutineScope()
-    LaunchedEffect(store.interval) {
+    var showInterval by remember { mutableStateOf(false) }
+    var showInfo by remember { mutableStateOf(false) }
+    var showPicker by remember { mutableStateOf(false) }
+    var rangeReq by remember { mutableStateOf<RangeReq?>(null) }
+    var rangeId by remember { mutableIntStateOf(0) }
+    LaunchedEffect(store.interval, store.selected) {
         try { store.refreshMarket() } catch (_: Exception) {}
     }
-    val stat = store.stats.optJSONObject(store.selected)
-    val asset = store.assets.firstOrNull {
-        it.optString("symbol") == store.selected
+    val asset = store.assets.firstOrNull { it.optString("symbol") == store.selected }
+    val intervalSec = TvIntervals.seconds(store.interval)
+
+    Column(Modifier.fillMaxSize().background(Color.Black)) {
+        TvChart(
+            store.candles, store.selected, asset?.optString("name").orEmpty(),
+            intervalSec, rangeReq, Modifier.weight(1f).fillMaxWidth()
+        )
+        Row(
+            Modifier.fillMaxWidth().background(Color(0xFF0A0A0A)).padding(horizontal = 10.dp, vertical = 2.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            TextButton(onClick = { showPicker = true }) {
+                Text(store.selected, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+            }
+            TextButton(onClick = { showInterval = true }) {
+                Text(TvIntervals.label(store.interval), color = Color.White, fontSize = 16.sp)
+            }
+            Spacer(Modifier.weight(1f))
+            TextButton(onClick = { showInfo = true }) { Text("Info", color = MUTED) }
+            Button(onClick = onTrade, colors = ButtonDefaults.buttonColors(containerColor = BLUE)) { Text("Handel") }
+        }
     }
 
-    Page {
-        LazyColumn(
-            Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(horizontal = 14.dp),
-            verticalArrangement = Arrangement.spacedBy(9.dp)
-        ) {
-            item {
-                Heading("Wykres", "Analiza ceny · ${store.selected}")
-                LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    items(store.assets, key = { it.optString("symbol") }) { a ->
-                        val s = a.optString("symbol")
-                        FilterChip(
-                            selected = s == store.selected,
-                            onClick = { store.selected = s },
-                            label = { Text(s, fontSize = 11.sp) }
-                        )
-                    }
-                }
-            }
-
-            item {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Badge(store.selected)
-                    Column(Modifier.weight(1f).padding(start = 9.dp)) {
-                        Text("${store.selected}/USD", color = TXT, fontWeight = FontWeight.Bold)
-                        Text(
-                            asset?.optString("name", "Aktywo") ?: "Aktywo",
-                            color = MUTED, fontSize = 10.sp
-                        )
-                    }
-                    listOf("1m" to "1M", "5m" to "5M", "1h" to "1H").forEach { (key, label) ->
-                        Text(
-                            label,
-                            color = if (store.interval == key) BLUE else MUTED,
-                            fontSize = 11.sp, fontWeight = FontWeight.Bold,
-                            modifier = Modifier
-                                .clickable { store.interval = key }
-                                .padding(horizontal = 7.dp, vertical = 5.dp)
-                        )
-                    }
-                }
-                Spacer(Modifier.height(8.dp))
-                Row(verticalAlignment = Alignment.Bottom) {
-                    Text(
-                        "$" + fmt(store.lastPrice),
-                        color = TXT, fontSize = 27.sp,
-                        fontWeight = FontWeight.Bold,
-                        fontFamily = FontFamily.Monospace
-                    )
-                    Spacer(Modifier.width(8.dp))
-                    Change(change(store, store.selected))
-                }
-            }
-
-            item {
-                Panel {
+    if (showInterval) {
+        IntervalSheet(
+            selected = store.interval,
+            intervalSec = intervalSec,
+            onInterval = { store.interval = it; showInterval = false },
+            onRange = { c -> rangeId++; rangeReq = RangeReq(c, rangeId); showInterval = false },
+            onDismiss = { showInterval = false }
+        )
+    }
+    if (showPicker) {
+        ModalBottomSheet(onDismissRequest = { showPicker = false }, containerColor = Color(0xFF1E1E1E)) {
+            Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp).padding(bottom = 24.dp)) {
+                store.assets.forEach { a ->
+                    val s = a.optString("symbol")
                     Row(
-                        Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
+                        Modifier.fillMaxWidth()
+                            .clickable { store.selected = s; showPicker = false }
+                            .padding(vertical = 11.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Label("Wykres świecowy")
-                        Text("${store.candles.size} świec", color = MUTED, fontSize = 10.sp)
-                    }
-                    Spacer(Modifier.height(10.dp))
-                    if (store.candles.isEmpty()) {
-                        Box(
-                            Modifier.fillMaxWidth().height(230.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text("Wykres pojawi się po transakcjach.", color = MUTED)
+                        Badge(s)
+                        Column(Modifier.weight(1f).padding(start = 10.dp)) {
+                            Text(s, color = Color.White, fontWeight = FontWeight.Bold)
+                            Text(a.optString("name", s), color = MUTED, fontSize = 11.sp, maxLines = 1)
                         }
-                    } else {
-                        Candles(store.candles, Modifier.fillMaxWidth().height(230.dp))
+                        Text(fmtPx(a.optString("last_price", "0")), color = Color.White)
                     }
+                    HorizontalDivider(color = LINE)
                 }
             }
+        }
+    }
+    if (showInfo) {
+        ModalBottomSheet(onDismissRequest = { showInfo = false }, containerColor = Color(0xFF14181F)) {
+            ChartInfo(store, scope) { showInfo = false; onTrade() }
+        }
+    }
+}
 
-            item {
-                Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-                    Metric("MAKSIMUM", stat?.optString("high") ?: "—", Modifier.weight(1f))
-                    Metric("MINIMUM", stat?.optString("low") ?: "—", Modifier.weight(1f))
-                    Metric("TRANSAKCJE", stat?.optInt("trades")?.toString() ?: "0", Modifier.weight(1f))
-                }
+@Composable
+private fun ChartInfo(store: Store, scope: CoroutineScope, onTrade: () -> Unit) {
+    val stat = store.stats.optJSONObject(store.selected)
+    val asset = store.assets.firstOrNull { it.optString("symbol") == store.selected }
+    Column(
+        Modifier.fillMaxWidth().verticalScroll(rememberScrollState())
+            .padding(horizontal = 14.dp).padding(bottom = 24.dp),
+        verticalArrangement = Arrangement.spacedBy(9.dp)
+    ) {
+        Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+            Metric("MAKSIMUM", stat?.optString("high") ?: "—", Modifier.weight(1f))
+            Metric("MINIMUM", stat?.optString("low") ?: "—", Modifier.weight(1f))
+            Metric("TRANSAKCJE", stat?.optInt("trades")?.toString() ?: "0", Modifier.weight(1f))
+        }
+        Panel {
+            Label("Informacje o aktywie")
+            Spacer(Modifier.height(6.dp))
+            val desc = asset?.optString("description").orEmpty()
+            if (desc.isNotBlank()) Text(desc, color = TXT, fontSize = 11.sp)
+            Row(Modifier.fillMaxWidth().padding(top = 6.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text("Podaż całkowita (stała)", color = MUTED, fontSize = 11.sp)
+                Text(fmt(asset?.optString("total_supply", "0") ?: "0"), color = TXT, fontSize = 11.sp)
             }
-
-            item {
-                Panel {
-                    Label("Informacje o aktywie")
-                    Spacer(Modifier.height(6.dp))
-                    val desc = asset?.optString("description").orEmpty()
-                    if (desc.isNotBlank()) Text(desc, color = TXT, fontSize = 11.sp)
-                    Row(Modifier.fillMaxWidth().padding(top = 6.dp), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text("Podaż całkowita (stała)", color = MUTED, fontSize = 11.sp)
-                        Text(fmt(asset?.optString("total_supply", "0") ?: "0"), color = TXT, fontSize = 11.sp)
-                    }
-                    Row(Modifier.fillMaxWidth().padding(top = 4.dp), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text("Posiadacze", color = MUTED, fontSize = 11.sp)
-                        Text(stat?.optInt("holders")?.toString() ?: "0", color = TXT, fontSize = 11.sp)
-                    }
-                    if (!Api.offline) {
-                        OutlinedButton(
-                            onClick = {
-                                scope.launch {
-                                    try {
-                                        val r = Api.post("assets/${store.selected}/report", JSONObject())
-                                        store.message = "Zgłoszono (${r.optInt("reports")})" +
-                                            if (r.optBoolean("flagged")) " · oznaczone do moderacji" else ""
-                                    } catch (e: Exception) {
-                                        store.message = e.message ?: "Błąd zgłoszenia"
-                                    }
-                                }
-                            },
-                            Modifier.fillMaxWidth().padding(top = 8.dp)
-                        ) { Text("Zgłoś podejrzane aktywo", fontSize = 11.sp) }
-                        if (store.message.isNotBlank()) Text(store.message, color = MUTED, fontSize = 10.sp)
-                    }
-                }
+            Row(Modifier.fillMaxWidth().padding(top = 4.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text("Posiadacze", color = MUTED, fontSize = 11.sp)
+                Text(stat?.optInt("holders")?.toString() ?: "0", color = TXT, fontSize = 11.sp)
             }
-
-            item {
-                Panel {
-                    Label("Wolumen 24h")
-                    Text(
-                        "$" + fmt(stat?.optString("volume_usd", "0") ?: "0"),
-                        color = TXT, fontSize = 17.sp, fontWeight = FontWeight.Bold
-                    )
-                    Spacer(Modifier.height(10.dp))
-                    Button(
-                        onClick = onTrade,
-                        Modifier.fillMaxWidth(),
-                        colors = ButtonDefaults.buttonColors(containerColor = BLUE)
-                    ) {
-                        Text("Przejdź do handlu")
-                    }
-                }
+            Row(Modifier.fillMaxWidth().padding(top = 4.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text("Wolumen 24h", color = MUTED, fontSize = 11.sp)
+                Text("$" + fmt(stat?.optString("volume_usd", "0") ?: "0"), color = TXT, fontSize = 11.sp)
             }
-
-            item { Label("Ostatnie transakcje") }
-            items(store.trades.take(10)) { t ->
-                Row(
-                    Modifier.fillMaxWidth().padding(vertical = 6.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Text("$" + fmt(t.optString("price")), color = TXT, fontSize = 11.sp)
-                    Text(fmt(t.optString("quantity")), color = MUTED, fontSize = 11.sp)
-                    Text(t.optString("created_at").takeLast(8), color = MUTED, fontSize = 10.sp)
-                }
-                HorizontalDivider(color = LINE)
+            if (!Api.offline) {
+                OutlinedButton(
+                    onClick = {
+                        scope.launch {
+                            try {
+                                val r = Api.post("assets/${store.selected}/report", JSONObject())
+                                store.message = "Zgłoszono (${r.optInt("reports")})" +
+                                    if (r.optBoolean("flagged")) " · oznaczone do moderacji" else ""
+                            } catch (e: Exception) {
+                                store.message = e.message ?: "Błąd zgłoszenia"
+                            }
+                        }
+                    },
+                    Modifier.fillMaxWidth().padding(top = 8.dp)
+                ) { Text("Zgłoś podejrzane aktywo", fontSize = 11.sp) }
+                if (store.message.isNotBlank()) Text(store.message, color = MUTED, fontSize = 10.sp)
             }
+        }
+        Button(
+            onClick = onTrade,
+            Modifier.fillMaxWidth(),
+            colors = ButtonDefaults.buttonColors(containerColor = BLUE)
+        ) { Text("Przejdź do handlu") }
+        Label("Ostatnie transakcje")
+        store.trades.take(10).forEach { tr ->
+            Row(
+                Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text(fmtPx(tr.optString("price")), color = TXT, fontSize = 11.sp)
+                Text(fmt(tr.optString("quantity")), color = MUTED, fontSize = 11.sp)
+                Text(tr.optString("created_at").takeLast(8), color = MUTED, fontSize = 10.sp)
+            }
+            HorizontalDivider(color = LINE)
         }
     }
 }

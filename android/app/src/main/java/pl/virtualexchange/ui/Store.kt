@@ -36,7 +36,7 @@ class Store {
         bids = parseLevels(book.optJSONArray("bids"))
         asks = parseLevels(book.optJSONArray("asks"))
         trades = Api.getArray("trades/$symbol").objects().take(30)
-        candles = parseCandles(Api.getArray("candles/$symbol?limit=60&interval=$interval"))
+        candles = parseCandles(Api.getArray("candles/$symbol?limit=300&interval=$interval"))
         stats = try {
             Api.getObject("stats")
         } catch (_: Exception) {

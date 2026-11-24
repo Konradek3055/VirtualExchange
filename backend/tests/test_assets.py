@@ -63,4 +63,6 @@ def test_candle_intervals_aggregate_real_trades(client):
     assert len(c1) >= 1 and len(c5) >= 1 and len(ch) == 1
     assert abs(sum(c["volume"] for c in c1) - 0.15) < 1e-9 and abs(ch[0]["volume"] - 0.15) < 1e-9
     assert (ch[0]["open"], ch[0]["high"], ch[0]["low"], ch[0]["close"]) == (65000, 65100, 65000, 65100)
+    for ok in ("3m", "15m", "30m", "4h", "1d"):
+        assert client.get(f"/candles/BTC?interval={ok}").status_code == 200
     assert client.get("/candles/BTC?interval=2m").status_code == 400

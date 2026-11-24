@@ -132,11 +132,15 @@ object LocalApi {
                 method == "GET" && parts[0] == "candles" && parts.size == 2 -> {
                     val limit = query.split("&").firstOrNull { it.startsWith("limit=") }
                         ?.removePrefix("limit=")?.toIntOrNull()?.coerceIn(1, 500) ?: 100
-                    val bucketMs = when (query.split("&").firstOrNull { it.startsWith("interval=") }?.removePrefix("interval=")) {
-                        "5m" -> 300_000L
-                        "1h" -> 3_600_000L
-                        else -> 60_000L
-                    }
+                    val iv = query.split("&").firstOrNull { it.startsWith("interval=") }
+                        ?.removePrefix("interval=") ?: "1m"
+                    val bucketMs = Regex("""(\d+)([mhd])""").matchEntire(iv)?.let { m ->
+                        m.groupValues[1].toLong() * when (m.groupValues[2]) {
+                            "m" -> 60_000L
+                            "h" -> 3_600_000L
+                            else -> 86_400_000L
+                        }
+                    } ?: 60_000L
                     JSONArray().also { arr ->
                         e.candles(parts[1].uppercase(), bucketMs, limit).forEach {
                             arr.put(JSONObject().put("time", time(it.bucketMs).substring(0, 16))

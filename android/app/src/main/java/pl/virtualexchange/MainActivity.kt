@@ -81,7 +81,7 @@ fun ExchangeApp() {
     Scaffold(
         containerColor = Color(0xFF080D13),
         topBar = {
-            Column(Modifier.fillMaxWidth().background(Color(0xFF0C131B))) {
+            if (tab != 1) Column(Modifier.fillMaxWidth().background(Color(0xFF0C131B))) {
                 Row(
                     Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 11.dp),
                     verticalAlignment = Alignment.CenterVertically,
@@ -113,11 +113,11 @@ fun ExchangeApp() {
                         icon = { Text(glyphs[index], fontSize = 19.sp, fontWeight = FontWeight.Bold) },
                         label = { Text(label, fontSize = 10.sp) },
                         colors = NavigationBarItemDefaults.colors(
-                            selectedIconColor = Color(0xFF42A5FF),
-                            selectedTextColor = Color(0xFF42A5FF),
-                            indicatorColor = Color(0xFF142B40),
-                            unselectedIconColor = Color(0xFF8190A2),
-                            unselectedTextColor = Color(0xFF8190A2),
+                            selectedIconColor = Color.White,
+                            selectedTextColor = Color.White,
+                            indicatorColor = Color(0xFF2A2E39),
+                            unselectedIconColor = Color(0xFFB2B5BE),
+                            unselectedTextColor = Color(0xFFB2B5BE),
                         ),
                     )
                 }

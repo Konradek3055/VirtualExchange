@@ -50,7 +50,7 @@ wyłącznie dla łatwego testowania lokalnego.
   z paskami głębokości, formularz LIMIT/MARKET, historia transakcji), Portfel (wartość wg ostatnich cen),
   Zlecenia (anulowanie), Więcej (konto, serwer, nowe aktywo); odświeżanie przez WebSocket + zapasowo co 5 s,
 - tworzenie własnych aktywów (unikalny ticker, stała podaż, twórca nie ustawia ceny, opłata emisji 100 USD i limit 3 aktywów na gracza),
-- świece 1M/5M/1H, panel informacji o aktywie, zgłaszanie podejrzanych aktywów (flaga po 3 zgłoszeniach),
+- wykres w stylu TradingView (interwały 1m, 3m, 5m, 15m, 30m, 1h, 4h, 1D; sekundy i ticki niedostępne), panel informacji o aktywie, zgłaszanie podejrzanych aktywów (flaga po 3 zgłoszeniach),
 - przyciski 25/50/75/100% w formularzu zlecenia.
 
 Pełna lista wymagań i statusów: `docs/CHECKLISTA.md`.

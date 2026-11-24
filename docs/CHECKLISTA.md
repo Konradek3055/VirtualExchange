@@ -26,7 +26,7 @@ Android nie był kompilowany lokalnie - weryfikacją jest GitHub Actions (job `a
 | Logo aktywa | ❌ | zaplanowane (pole + bezpieczne ładowanie) |
 | Firmy i akcje | ❌ | pomysł na później |
 | GitHub Actions: JDK, SDK, testy, APK, artifact | ✅ | `.github/workflows/build.yml` |
-| UI w stylu Binance/OKX/TradingView | 🟡 | ciemny terminal, świece+wolumen, księga z paskami, 1M/5M/1H, 25-100%; bez wskaźników i rysowania jak w TradingView |
+| UI w stylu Binance/OKX/TradingView | 🟡 | wykres jak w TradingView: pełny ekran, oś cen z ładnymi krokami, tag ostatniej ceny z odliczaniem, wolumen nałożony, crosshair (przytrzymaj), pinch-zoom/przesuwanie, arkusz Zakres dat/Interwał (1m-1D), lista rynku jak watchlista; bez wskaźników i narzędzi rysowania |
 
 ## Boty
 Tryb offline ma boty **regułowe** (market makerzy + traderzy z losowymi zleceniami) - to nie AI/LLM.
