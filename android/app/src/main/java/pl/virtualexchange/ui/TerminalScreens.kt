@@ -643,8 +643,8 @@ fun TerminalPortfolioTab(store: Store, scope: CoroutineScope) {
                         )
                     }
                     Text(
-                        fmt((available.toDoubleOrNull() ?: 0.0) +
-                            (held.toDoubleOrNull() ?: 0.0)),
+                        fmt(((available.toDoubleOrNull() ?: 0.0) +
+                            (held.toDoubleOrNull() ?: 0.0)).toString()),
                         color = TXT, fontSize = 12.sp
                     )
                 }
