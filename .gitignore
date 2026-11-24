@@ -1,0 +1,8 @@
+__pycache__/
+*.py[cod]
+.venv/
+backend/virtualexchange.sqlite3
+.gradle/
+build/
+local.properties
+.idea/
