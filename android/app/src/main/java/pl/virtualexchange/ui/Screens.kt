@@ -128,7 +128,7 @@ fun MarketTab(store: Store, onOpen: () -> Unit) {
 
     LazyColumn(
         modifier = Modifier.fillMaxSize().background(PageBg),
-        contentPadding = PaddingValues(horizontal = 16.dp, bottom = 26.dp),
+        contentPadding = PaddingValues(start = 16.dp, top = 0.dp, end = 16.dp, bottom = 26.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         item {
@@ -200,7 +200,7 @@ fun ChartTab(store: Store, onTrade: () -> Unit) {
 
     LazyColumn(
         modifier = Modifier.fillMaxSize().background(PageBg),
-        contentPadding = PaddingValues(horizontal = 16.dp, bottom = 26.dp),
+        contentPadding = PaddingValues(start = 16.dp, top = 0.dp, end = 16.dp, bottom = 26.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         item {
@@ -303,7 +303,7 @@ fun TradeTab(store: Store, scope: CoroutineScope) {
 
     LazyColumn(
         modifier = Modifier.fillMaxSize().background(PageBg),
-        contentPadding = PaddingValues(horizontal = 16.dp, bottom = 28.dp),
+        contentPadding = PaddingValues(start = 16.dp, top = 0.dp, end = 16.dp, bottom = 28.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         item {
@@ -420,7 +420,7 @@ fun PortfolioTab(store: Store, scope: CoroutineScope) {
 
     LazyColumn(
         modifier = Modifier.fillMaxSize().background(PageBg),
-        contentPadding = PaddingValues(horizontal = 16.dp, bottom = 28.dp),
+        contentPadding = PaddingValues(start = 16.dp, top = 0.dp, end = 16.dp, bottom = 28.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         item {
