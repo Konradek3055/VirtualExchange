@@ -11,9 +11,10 @@ import pl.virtualexchange.data.objects
 import pl.virtualexchange.data.parseCandles
 import pl.virtualexchange.data.parseLevels
 
-/** Stan całej aplikacji. Dane zawsze pochodzą z serwera - klient niczego nie liczy ani nie ustala cen. */
+/** Dane prezentowane w UI są pobierane z lokalnego silnika lub wspólnego serwera. */
 class Store {
     var assets by mutableStateOf(listOf<JSONObject>())
+    var stats by mutableStateOf(JSONObject())
     var portfolio by mutableStateOf(listOf<JSONObject>())
     var orders by mutableStateOf(listOf<JSONObject>())
     var bids by mutableStateOf(listOf<Level>())
@@ -29,12 +30,17 @@ class Store {
         get() = assets.firstOrNull { it.optString("symbol") == selected }?.optString("last_price", "0") ?: "0"
 
     suspend fun refreshMarket() {
-        val s = selected
-        val book = Api.getObject("orderbook/$s")
+        val symbol = selected
+        val book = Api.getObject("orderbook/$symbol")
         bids = parseLevels(book.optJSONArray("bids"))
         asks = parseLevels(book.optJSONArray("asks"))
-        trades = Api.getArray("trades/$s").objects().take(30)
-        candles = parseCandles(Api.getArray("candles/$s?limit=60"))
+        trades = Api.getArray("trades/$symbol").objects().take(30)
+        candles = parseCandles(Api.getArray("candles/$symbol?limit=60"))
+        stats = try {
+            Api.getObject("stats")
+        } catch (_: Exception) {
+            JSONObject()
+        }
     }
 
     suspend fun refreshAccount() {
@@ -42,18 +48,21 @@ class Store {
             portfolio = Api.getArray("portfolio", true).objects()
             orders = Api.getArray("orders", true).objects()
             accountError = ""
-        } catch (e: Exception) {
-            accountError = e.message ?: "Błąd konta"
+        } catch (error: Exception) {
+            accountError = error.message ?: "Błąd konta"
         }
     }
 
     suspend fun refreshAll() {
         try {
             assets = Api.getArray("assets").objects()
+            if (assets.none { it.optString("symbol") == selected } && assets.isNotEmpty()) {
+                selected = assets.first().optString("symbol")
+            }
             refreshMarket()
-            status = if (Api.offline) "OFFLINE · symulacja z botami" else "ONLINE"
-        } catch (e: Exception) {
-            status = "BŁĄD SERWERA: ${e.message}"
+            status = if (Api.offline) "OFFLINE · symulacja z botami" else "ONLINE · wspólny rynek"
+        } catch (error: Exception) {
+            status = "BŁĄD RYNKU: ${error.message}"
         }
         refreshAccount()
     }
