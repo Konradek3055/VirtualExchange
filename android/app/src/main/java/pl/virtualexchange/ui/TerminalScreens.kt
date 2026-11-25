@@ -8,6 +8,10 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.*
 import androidx.compose.foundation.shape.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Edit
+import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material.icons.outlined.Timeline
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
@@ -30,14 +34,14 @@ import pl.virtualexchange.data.money
 import java.math.BigDecimal
 import java.math.RoundingMode
 
-private val BG = Color(0xFF080B10)
-private val PANEL = Color(0xFF101720)
-private val LINE = Color(0xFF202B37)
-private val MUTED = Color(0xFF8291A3)
-private val TXT = Color(0xFFE7EDF4)
-private val BLUE = Color(0xFF3B8DFF)
-private val GREEN = Color(0xFF00B987)
-private val RED = Color(0xFFF05265)
+private val BG = Color(0xFF000000)
+private val PANEL = Color(0xFF1E1E1E)
+private val LINE = Color(0xFF2A2E39)
+private val MUTED = Color(0xFF9A9A9A)
+private val TXT = Color(0xFFFFFFFF)
+private val BLUE = Color(0xFF2962FF)
+private val GREEN = Color(0xFF089981)
+private val RED = Color(0xFFF23645)
 
 @Composable private fun Page(content: @Composable () -> Unit) {
     Box(Modifier.fillMaxSize().background(BG)) { content() }
@@ -51,16 +55,14 @@ private val RED = Color(0xFFF05265)
 }
 
 @Composable private fun Label(s: String) {
-    Text(s.uppercase(), color = MUTED, fontSize = 10.sp,
-        fontWeight = FontWeight.Bold, letterSpacing = .7.sp)
+    Text(s, color = MUTED, fontSize = 13.sp, fontWeight = FontWeight.Medium)
 }
 
 @Composable private fun Panel(content: @Composable ColumnScope.() -> Unit) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
         color = PANEL,
-        shape = RoundedCornerShape(10.dp),
-        border = androidx.compose.foundation.BorderStroke(1.dp, LINE)
+        shape = RoundedCornerShape(16.dp)
     ) {
         Column(Modifier.padding(13.dp), content = content)
     }
@@ -100,104 +102,6 @@ private fun change(store: Store, symbol: String): Double? {
         fontWeight = FontWeight.SemiBold, fontFamily = FontFamily.Monospace)
 }
 
-@Composable
-fun TerminalMarketTab(store: Store, onOpen: () -> Unit) {
-    var query by remember { mutableStateOf("") }
-    val assets = store.assets.filter {
-        query.isBlank() ||
-        it.optString("symbol").contains(query, true) ||
-        it.optString("name").contains(query, true)
-    }
-
-    Page {
-        LazyColumn(
-            Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(horizontal = 15.dp)
-        ) {
-            item {
-                Heading("Rynek", "Wirtualne aktywa · wspólny rynek")
-                Row(
-                    Modifier.fillMaxWidth().padding(vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(Modifier.weight(1f)) {
-                        Label("Instrumenty")
-                        Text("${assets.size} aktywów", color = MUTED, fontSize = 11.sp)
-                    }
-                    Text(
-                        if (store.status.startsWith("ONLINE")) "● ONLINE"
-                        else "● SYMULACJA",
-                        color = GREEN, fontSize = 10.sp, fontWeight = FontWeight.Bold
-                    )
-                }
-                OutlinedTextField(
-                    query, { query = it },
-                    Modifier.fillMaxWidth(),
-                    singleLine = true,
-                    placeholder = { Text("Szukaj aktywa lub tickera") },
-                    shape = RoundedCornerShape(8.dp)
-                )
-                Spacer(Modifier.height(14.dp))
-                Row(Modifier.fillMaxWidth().padding(vertical = 5.dp)) {
-                    Label("Aktywo")
-                    Spacer(Modifier.weight(1f))
-                    Label("Cena")
-                    Spacer(Modifier.width(65.dp))
-                    Label("24h")
-                }
-                HorizontalDivider(color = LINE)
-            }
-
-            if (assets.isEmpty()) {
-                item {
-                    Text(
-                        if (store.assets.isEmpty()) "Ładowanie rynku…"
-                        else "Nie znaleziono aktywa.",
-                        color = MUTED,
-                        modifier = Modifier.padding(20.dp)
-                    )
-                }
-            }
-
-            items(assets, key = { it.optString("symbol") }) { a ->
-                val symbol = a.optString("symbol")
-                val stat = store.stats.optJSONObject(symbol)
-
-                Row(
-                    Modifier.fillMaxWidth()
-                        .clickable {
-                            store.selected = symbol
-                            onOpen()
-                        }
-                        .padding(vertical = 11.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Badge(symbol)
-                    Column(
-                        Modifier.weight(1f).padding(start = 10.dp)
-                    ) {
-                        Text(symbol, color = TXT, fontWeight = FontWeight.Bold)
-                        Text(
-                            a.optString("name", symbol),
-                            color = MUTED, fontSize = 10.sp,
-                            maxLines = 1, overflow = TextOverflow.Ellipsis
-                        )
-                    }
-                    Column(horizontalAlignment = Alignment.End) {
-                        Text(
-                            fmtPx(a.optString("last_price", "0")),
-                            color = TXT, fontSize = 17.sp,
-                            fontWeight = FontWeight.Medium
-                        )
-                        Change(change(store, symbol))
-                    }
-                }
-                HorizontalDivider(Modifier.padding(start = 56.dp), color = LINE)
-            }
-        }
-    }
-}
-
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TerminalChartTab(store: Store, onTrade: () -> Unit) {
@@ -234,15 +138,19 @@ fun TerminalChartTab(store: Store, onTrade: () -> Unit) {
             TextButton(onClick = { showInterval = true }) {
                 Text(TvIntervals.label(store.interval), color = Color.White, fontSize = 16.sp)
             }
-            TextButton(onClick = { showIndicators = true }, contentPadding = PaddingValues(horizontal = 8.dp)) {
-                Text("ƒx", color = if (store.indicators != IndicatorSet()) BLUE else Color.White, fontSize = 17.sp, fontWeight = FontWeight.Bold)
+            IconButton(onClick = { showIndicators = true }) {
+                Icon(Icons.Outlined.Timeline, "Wskaźniki", tint = if (store.indicators != IndicatorSet()) BLUE else Color.White)
             }
-            TextButton(onClick = { showDraw = true }, contentPadding = PaddingValues(horizontal = 8.dp)) {
-                Text("✎", color = if (drawings.isNotEmpty() || store.tool != DrawTool.NONE) BLUE else Color.White, fontSize = 18.sp)
+            IconButton(onClick = { showDraw = true }) {
+                Icon(Icons.Outlined.Edit, "Rysuj", tint = if (drawings.isNotEmpty() || store.tool != DrawTool.NONE) BLUE else Color.White)
             }
             Spacer(Modifier.weight(1f))
-            TextButton(onClick = { showInfo = true }, contentPadding = PaddingValues(horizontal = 8.dp)) { Text("Info", color = MUTED) }
-            Button(onClick = onTrade, colors = ButtonDefaults.buttonColors(containerColor = BLUE)) { Text("Handel") }
+            IconButton(onClick = { showInfo = true }) { Icon(Icons.Outlined.Info, "Info", tint = MUTED) }
+            Button(
+                onClick = onTrade,
+                colors = ButtonDefaults.buttonColors(containerColor = BLUE),
+                contentPadding = PaddingValues(horizontal = 16.dp)
+            ) { Text("Handel", maxLines = 1, softWrap = false) }
         }
     }
 
@@ -420,361 +328,4 @@ private fun ChartInfo(store: Store, scope: CoroutineScope, onTrade: () -> Unit) 
             )
         }
     }
-}
-
-@Composable
-fun TerminalTradeTab(store: Store, scope: CoroutineScope) {
-    var side by remember { mutableStateOf("buy") }
-    var kind by remember { mutableStateOf("limit") }
-    var qty by remember { mutableStateOf("") }
-    var price by remember(store.selected) {
-        mutableStateOf(if (store.lastPrice == "0") "" else fmt(store.lastPrice))
-    }
-
-    val estimate =
-        (qty.toDoubleOrNull() ?: 0.0) * (price.toDoubleOrNull() ?: 0.0)
-
-    Page {
-        LazyColumn(
-            Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(horizontal = 14.dp),
-            verticalArrangement = Arrangement.spacedBy(9.dp)
-        ) {
-            item {
-                Heading("Handel", "Księga zleceń · ${store.selected}")
-                LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    items(store.assets, key = { it.optString("symbol") }) { a ->
-                        val s = a.optString("symbol")
-                        FilterChip(
-                            s == store.selected,
-                            { store.selected = s },
-                            label = { Text(s, fontSize = 11.sp) }
-                        )
-                    }
-                }
-            }
-
-            item {
-                Panel {
-                    Label("Ostatnia transakcja")
-                    Text(
-                        "$" + fmt(store.lastPrice),
-                        color = TXT, fontSize = 24.sp,
-                        fontWeight = FontWeight.Bold,
-                        fontFamily = FontFamily.Monospace
-                    )
-                }
-            }
-
-            item {
-                Panel {
-                    Label("Księga zleceń")
-                    Spacer(Modifier.height(8.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        Column(Modifier.weight(1f)) {
-                            Text("KUPNO", color = GREEN, fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                            store.bids.take(7).forEach {
-                                BookLine(it, GREEN) { price = fmt(it.price) }
-                            }
-                        }
-                        Column(Modifier.weight(1f)) {
-                            Text("SPRZEDAŻ", color = RED, fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                            store.asks.take(7).reversed().forEach {
-                                BookLine(it, RED) { price = fmt(it.price) }
-                            }
-                        }
-                    }
-                    HorizontalDivider(color = LINE, modifier = Modifier.padding(vertical = 7.dp))
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text("Spread", color = MUTED, fontSize = 10.sp)
-                        val spread =
-                            if (store.asks.isNotEmpty() && store.bids.isNotEmpty())
-                                (store.asks.first().price.toDoubleOrNull() ?: 0.0) -
-                                (store.bids.first().price.toDoubleOrNull() ?: 0.0)
-                            else null
-                        Text(spread?.let { "$" + fmt(it.toString()) } ?: "—", color = TXT)
-                    }
-                }
-            }
-
-            item {
-                Panel {
-                    Label("Nowe zlecenie")
-                    Spacer(Modifier.height(8.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-                        Button(
-                            onClick = { side = "buy" },
-                            Modifier.weight(1f),
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = if (side == "buy") GREEN else Color(0xFF1A2930)
-                            )
-                        ) { Text("KUP") }
-
-                        Button(
-                            onClick = { side = "sell" },
-                            Modifier.weight(1f),
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = if (side == "sell") RED else Color(0xFF302027)
-                            )
-                        ) { Text("SPRZEDAJ") }
-                    }
-
-                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        FilterChip(kind == "limit", { kind = "limit" }, label = { Text("Limit") })
-                        FilterChip(kind == "market", { kind = "market" }, label = { Text("Market") })
-                    }
-
-                    OutlinedTextField(
-                        qty, { qty = it },
-                        Modifier.fillMaxWidth(),
-                        singleLine = true,
-                        label = { Text("Ilość · ${store.selected}") },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal)
-                    )
-                    Row(
-                        Modifier.fillMaxWidth().padding(vertical = 4.dp),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        listOf(25, 50, 75, 100).forEach { pct ->
-                            OutlinedButton(
-                                onClick = { qty = pctQty(store, side, kind, price, pct) },
-                                Modifier.weight(1f),
-                                contentPadding = PaddingValues(0.dp)
-                            ) { Text("$pct%", fontSize = 11.sp) }
-                        }
-                    }
-
-                    if (kind == "limit") {
-                        OutlinedTextField(
-                            price, { price = it },
-                            Modifier.fillMaxWidth(),
-                            singleLine = true,
-                            label = { Text("Cena limitu · USD") },
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal)
-                        )
-                    }
-
-                    Row(
-                        Modifier.fillMaxWidth().padding(vertical = 8.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Text("Szacowana wartość", color = MUTED, fontSize = 11.sp)
-                        Text(
-                            if (kind == "limit" && estimate > 0) "$" + money(estimate)
-                            else "Zależna od księgi",
-                            color = TXT, fontSize = 11.sp
-                        )
-                    }
-
-                    Button(
-                        onClick = {
-                            scope.launch {
-                                try {
-                                    val body = JSONObject()
-                                        .put("symbol", store.selected)
-                                        .put("side", side)
-                                        .put("order_type", kind)
-                                        .put("quantity", qty.trim())
-                                    if (kind == "limit") body.put("price", price.trim())
-
-                                    val response = Api.post("orders", body)
-                                    store.message = "Zlecenie: " + response.optString("status")
-                                    qty = ""
-                                    store.refreshAll()
-                                } catch (e: Exception) {
-                                    store.message = e.message ?: "Błąd zlecenia"
-                                }
-                            }
-                        },
-                        Modifier.fillMaxWidth().height(46.dp),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = if (side == "buy") GREEN else RED
-                        )
-                    ) {
-                        Text(if (side == "buy") "Kup ${store.selected}" else "Sprzedaj ${store.selected}")
-                    }
-                    if (store.message.isNotBlank()) {
-                        Text(store.message, color = MUTED, fontSize = 10.sp)
-                    }
-                }
-            }
-
-            item { Label("Ostatnie transakcje") }
-            items(store.trades.take(8)) { t ->
-                Row(
-                    Modifier.fillMaxWidth().padding(vertical = 6.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Text("$" + fmt(t.optString("price")), color = TXT, fontSize = 11.sp)
-                    Text(fmt(t.optString("quantity")), color = MUTED, fontSize = 11.sp)
-                    Text(t.optString("created_at").takeLast(8), color = MUTED, fontSize = 10.sp)
-                }
-                HorizontalDivider(color = LINE)
-            }
-        }
-    }
-}
-
-@Composable private fun BookLine(level: Level, color: Color, onClick: () -> Unit) {
-    Row(
-        Modifier.fillMaxWidth().clickable(onClick = onClick).padding(vertical = 4.dp),
-        horizontalArrangement = Arrangement.SpaceBetween
-    ) {
-        Text(fmt(level.price), color = color, fontSize = 10.sp, fontFamily = FontFamily.Monospace)
-        Text(fmt(level.qty), color = TXT, fontSize = 10.sp, fontFamily = FontFamily.Monospace)
-    }
-}
-
-@Composable
-fun TerminalPortfolioTab(store: Store, scope: CoroutineScope) {
-    var total = 0.0
-    var cash = 0.0
-    var locked = 0.0
-
-    store.portfolio.forEach { row ->
-        val available = row.optString("available").toDoubleOrNull() ?: 0.0
-        val held = row.optString("locked").toDoubleOrNull() ?: 0.0
-
-        if (row.optString("symbol") == "USD") {
-            cash = available
-            locked = held
-        }
-
-        total += if (row.optString("symbol") == "USD") available + held
-        else (available + held) * row.optDouble("last_price", 0.0)
-    }
-
-    val openOrders = store.orders.filter {
-        it.optString("status") == "OPEN" || it.optString("status") == "PARTIAL"
-    }
-
-    Page {
-        LazyColumn(
-            Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(horizontal = 15.dp)
-        ) {
-            item {
-                Heading("Portfel", "Saldo, aktywa i aktywne zlecenia")
-                Panel {
-                    Label("Łączna wartość")
-                    Text(
-                        "$" + money(total),
-                        color = TXT, fontSize = 28.sp,
-                        fontWeight = FontWeight.Bold,
-                        fontFamily = FontFamily.Monospace
-                    )
-                    Spacer(Modifier.height(12.dp))
-                    HorizontalDivider(color = LINE)
-                    Spacer(Modifier.height(8.dp))
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text("Dostępne USD", color = MUTED, fontSize = 11.sp)
-                        Text("$" + money(cash), color = GREEN)
-                    }
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text("Zablokowane USD", color = MUTED, fontSize = 11.sp)
-                        Text("$" + money(locked), color = TXT)
-                    }
-                }
-                if (store.accountError.isNotBlank()) {
-                    Text(store.accountError, color = RED, fontSize = 10.sp)
-                }
-                Spacer(Modifier.height(15.dp))
-                Label("Twoje aktywa")
-            }
-
-            if (store.portfolio.isEmpty()) {
-                item { Text("Portfel jest pusty.", color = MUTED) }
-            }
-
-            items(store.portfolio, key = { it.optString("symbol") }) { row ->
-                val symbol = row.optString("symbol")
-                val available = row.optString("available", "0")
-                val held = row.optString("locked", "0")
-
-                Row(
-                    Modifier.fillMaxWidth().padding(vertical = 9.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Badge(symbol)
-                    Column(Modifier.weight(1f).padding(start = 9.dp)) {
-                        Text(symbol, color = TXT, fontWeight = FontWeight.Bold)
-                        Text(
-                            "Dostępne ${fmt(available)} · zablokowane ${fmt(held)}",
-                            color = MUTED, fontSize = 9.sp
-                        )
-                    }
-                    Text(
-                        fmt(((available.toDoubleOrNull() ?: 0.0) +
-                            (held.toDoubleOrNull() ?: 0.0)).toString()),
-                        color = TXT, fontSize = 12.sp
-                    )
-                }
-                HorizontalDivider(color = LINE)
-            }
-
-            item {
-                Spacer(Modifier.height(15.dp))
-                Label("Otwarte zlecenia · ${openOrders.size}")
-            }
-
-            if (openOrders.isEmpty()) {
-                item { Text("Nie masz aktywnych zleceń.", color = MUTED) }
-            }
-
-            items(openOrders, key = { it.optInt("id") }) { order ->
-                Row(
-                    Modifier.fillMaxWidth().padding(vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(Modifier.weight(1f)) {
-                        val buy = order.optString("side") == "buy"
-                        Text(
-                            "${order.optString("side").uppercase()} ${order.optString("symbol")}",
-                            color = if (buy) GREEN else RED,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Text(
-                            "Pozostało ${fmt(order.optString("remaining"))}",
-                            color = MUTED, fontSize = 10.sp
-                        )
-                    }
-                    TextButton(onClick = {
-                        scope.launch {
-                            try {
-                                Api.delete("orders/${order.optInt("id")}")
-                                store.message = "Anulowano zlecenie"
-                                store.refreshAll()
-                            } catch (e: Exception) {
-                                store.message = e.message ?: "Nie udało się anulować"
-                            }
-                        }
-                    }) {
-                        Text("ANULUJ", color = RED, fontSize = 10.sp)
-                    }
-                }
-                HorizontalDivider(color = LINE)
-            }
-
-            if (store.message.isNotBlank()) {
-                item { Text(store.message, color = MUTED, fontSize = 10.sp) }
-            }
-        }
-    }
-}
-
-/** Ilość odpowiadająca procentowi dostępnego salda (kupno: USD / cena, sprzedaż: dostępne aktywo). */
-private fun pctQty(store: Store, side: String, kind: String, price: String, pct: Int): String {
-    val symbol = if (side == "buy") "USD" else store.selected
-    val available = store.portfolio.firstOrNull { it.optString("symbol") == symbol }
-        ?.optString("available")?.toBigDecimalOrNull() ?: return ""
-    val share = available.multiply(BigDecimal(pct)).divide(BigDecimal(100))
-    val result = if (side == "buy") {
-        val p = (if (kind == "limit") price.toBigDecimalOrNull()
-                 else store.asks.firstOrNull()?.price?.toBigDecimalOrNull()) ?: return ""
-        if (p.signum() <= 0) return ""
-        share.divide(p, 8, RoundingMode.DOWN)
-    } else {
-        share.setScale(8, RoundingMode.DOWN)
-    }
-    return result.stripTrailingZeros().toPlainString()
 }

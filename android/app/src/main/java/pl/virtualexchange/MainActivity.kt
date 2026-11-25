@@ -38,11 +38,13 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import pl.virtualexchange.data.Api
 import pl.virtualexchange.ui.TerminalChartTab
-import pl.virtualexchange.ui.TerminalMarketTab
-import pl.virtualexchange.ui.MoreTab
-import pl.virtualexchange.ui.TerminalPortfolioTab
+import pl.virtualexchange.ui.TvBottomBar
+import pl.virtualexchange.ui.TvMarketTab
+import pl.virtualexchange.ui.TvMenuTab
+import pl.virtualexchange.ui.TvPortfolioTab
+import pl.virtualexchange.ui.TvTopBar
+import pl.virtualexchange.ui.TvTradeTab
 import pl.virtualexchange.ui.Store
-import pl.virtualexchange.ui.TerminalTradeTab
 import pl.virtualexchange.ui.VeTheme
 
 class MainActivity : ComponentActivity() {
@@ -79,58 +81,17 @@ fun ExchangeApp() {
     DisposableEffect(Unit) { onDispose { Api.disconnect(); Api.pauseBots() } }
 
     Scaffold(
-        containerColor = Color(0xFF080D13),
-        topBar = {
-            if (tab != 1) Column(Modifier.fillMaxWidth().background(Color(0xFF0C131B))) {
-                Row(
-                    Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 11.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Surface(shape = RoundedCornerShape(12.dp), color = Color(0xFF153D66), modifier = Modifier.size(38.dp)) {
-                        Box(contentAlignment = Alignment.Center) {
-                            Text("V", color = Color(0xFF25D7B1), fontWeight = FontWeight.Black, fontSize = 24.sp)
-                        }
-                    }
-                    Column(Modifier.weight(1f).padding(start = 10.dp)) {
-                        Text("VIRTUALEXCHANGE", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp, letterSpacing = 1.sp)
-                        Text(store.status, color = Color(0xFF8796A8), fontSize = 10.sp)
-                    }
-                    TextButton(onClick = { scope.launch { store.refreshAll() } }) {
-                        Text("↻", color = Color(0xFF8FA8C0), fontSize = 22.sp)
-                    }
-                }
-                Box(Modifier.fillMaxWidth().size(1.dp).background(Color(0xFF202C38)))
-            }
-        },
-        bottomBar = {
-            NavigationBar(containerColor = Color(0xFF0C131B), contentColor = Color.White, tonalElevation = 0.dp) {
-                val labels = listOf("Rynek", "Wykres", "Handel", "Portfel", "Więcej")
-                val glyphs = listOf("◈", "⌁", "⇄", "▣", "☰")
-                labels.forEachIndexed { index, label ->
-                    NavigationBarItem(
-                        selected = tab == index,
-                        onClick = { tab = index },
-                        icon = { Text(glyphs[index], fontSize = 19.sp, fontWeight = FontWeight.Bold) },
-                        label = { Text(label, fontSize = 10.sp) },
-                        colors = NavigationBarItemDefaults.colors(
-                            selectedIconColor = Color.White,
-                            selectedTextColor = Color.White,
-                            indicatorColor = Color(0xFF2A2E39),
-                            unselectedIconColor = Color(0xFFB2B5BE),
-                            unselectedTextColor = Color(0xFFB2B5BE),
-                        ),
-                    )
-                }
-            }
-        },
+        containerColor = Color.Black,
+        topBar = { if (tab != 1) TvTopBar(store.status) { scope.launch { store.refreshAll() } } },
+        bottomBar = { TvBottomBar(tab) { tab = it } },
     ) { padding ->
         Box(Modifier.padding(padding)) {
             when (tab) {
-                0 -> TerminalMarketTab(store) { tab = 1 }
+                0 -> TvMarketTab(store) { tab = 1 }
                 1 -> TerminalChartTab(store) { tab = 2 }
-                2 -> TerminalTradeTab(store, scope)
-                3 -> TerminalPortfolioTab(store, scope)
-                else -> MoreTab(store, scope)
+                2 -> TvTradeTab(store, scope)
+                3 -> TvPortfolioTab(store, scope)
+                else -> TvMenuTab(store, scope)
             }
         }
     }

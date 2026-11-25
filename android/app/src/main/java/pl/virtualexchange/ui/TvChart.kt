@@ -361,7 +361,7 @@ fun TvChart(
         headerColor = if (chg == null || chg >= 0) UP else DOWN
         headerText = if (chg != null && prev != null && prev.close != 0.0) {
             val sign = if (chg >= 0) "+" else "−"
-            "${fmtPx(last.close)}  $sign${fmtPx(abs(chg))} ($sign${String.format(PL, "%.2f", abs(chg / prev.close * 100))}%)"
+            "${fmtPx(last.close)}  $sign${fmtDelta(chg)} ($sign${String.format(PL, "%.2f", abs(chg / prev.close * 100))}%)"
         } else fmtPx(last.close)
     } else {
         headerColor = AXIS_TXT
@@ -585,7 +585,7 @@ fun TvChart(
                 } else {
                     String.format(Locale.US, "%02d:%02d", remain / 60, remain % 60)
                 }
-                axisTag(measurer, listOf(axisText(lastC.close, g.step), cd), plotW, ly, lc, null, Color.White, g.topPad, g.mainBottom)
+                axisTag(measurer, listOf(fmtPx(lastC.close), cd), plotW, ly, lc, null, Color.White, g.topPad, g.mainBottom)
 
                 // crosshair
                 cross?.let { c ->
