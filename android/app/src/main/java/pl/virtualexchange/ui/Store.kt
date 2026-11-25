@@ -21,6 +21,7 @@ class Store {
     var bids by mutableStateOf(listOf<Level>())
     var asks by mutableStateOf(listOf<Level>())
     var trades by mutableStateOf(listOf<JSONObject>())
+    var bots by mutableStateOf(listOf<JSONObject>())
     var candles by mutableStateOf(listOf<Candle>())
     var selected by mutableStateOf("BTC")
     var interval by mutableStateOf("1m")
@@ -95,6 +96,9 @@ class Store {
                 selected = assets.first().optString("symbol")
             }
             refreshMarket()
+            bots = if (Api.offline) {
+                try { Api.getArray("bots").objects() } catch (_: Exception) { emptyList() }
+            } else emptyList()
             try { refreshSparks() } catch (_: Exception) {}
             status = if (Api.offline) "OFFLINE · symulacja z botami" else "ONLINE · wspólny rynek"
         } catch (error: Exception) {

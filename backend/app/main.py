@@ -5,7 +5,7 @@ from .db import init_db,connect
 from .schemas import CreateAccount,OrderIn,AssetCreate
 from .engine import place_order,cancel_order,seed
 from .assets import asset_info, create_user_asset, report_asset
-from .companies import get_company_development, upgrade_company
+from .companies import (get_company_development, upgrade_company, fund_company, withdraw_company, manage_company_staff)
 import calendar
 import secrets
 import time
@@ -171,6 +171,21 @@ def company_development(symbol:str,x_api_key:str|None=Header(default=None)):
 def company_upgrade(symbol:str,body:dict,x_api_key:str|None=Header(default=None)):
     account = account_from_key(x_api_key)
     return upgrade_company(account["id"],symbol.upper(),str(body.get("branch", "")))
+
+@app.post("/companies/{symbol}/capital")
+def company_capital(symbol:str,body:dict,x_api_key:str|None=Header(default=None)):
+    account = account_from_key(x_api_key)
+    return fund_company(account["id"],symbol.upper(),body.get("amount"))
+
+@app.post("/companies/{symbol}/dividend")
+def company_dividend(symbol:str,body:dict,x_api_key:str|None=Header(default=None)):
+    account = account_from_key(x_api_key)
+    return withdraw_company(account["id"],symbol.upper(),body.get("amount"))
+
+@app.post("/companies/{symbol}/staff")
+def company_staff(symbol:str,body:dict,x_api_key:str|None=Header(default=None)):
+    account = account_from_key(x_api_key)
+    return manage_company_staff(account["id"],symbol.upper(),str(body.get("action", "")),body.get("count", 1))
 
 async def notify(symbol):
     for ws in list(sockets.get(symbol,set())):

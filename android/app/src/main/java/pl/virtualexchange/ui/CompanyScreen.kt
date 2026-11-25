@@ -35,6 +35,22 @@ fun TvCompanyTab(store: Store, scope: CoroutineScope) {
     val mine = companies.filter { it.optInt("creator_id", -1) == store.userId }
     val limitReached = mine.size >= 3
 
+    fun runCompanyAction(ticker: String, endpoint: String, payload: JSONObject, success: String) {
+        busyCompany = ticker
+        scope.launch {
+            try {
+                val result = Api.post("companies/" + ticker + "/" + endpoint, payload)
+                developments = developments + (ticker to result)
+                store.refreshAccount()
+                store.message = success
+            } catch (error: Exception) {
+                store.message = error.message ?: "Nie udało się wykonać operacji spółki."
+            } finally {
+                busyCompany = ""
+            }
+        }
+    }
+
     LaunchedEffect(store.assets, store.userId) {
         val loaded = mutableMapOf<String, JSONObject>()
         for (asset in mine) {
@@ -133,21 +149,14 @@ fun TvCompanyTab(store: Store, scope: CoroutineScope) {
                 val ticker = asset.optString("symbol")
                 CompanyListingCard(asset, store, true)
                 developments[ticker]?.let { development ->
-                    CompanyDevelopmentCard(development, busyCompany == ticker) { branch ->
-                        busyCompany = ticker
-                        scope.launch {
-                            try {
-                                val result = Api.post("companies/" + ticker + "/upgrade", JSONObject().put("branch", branch))
-                                developments = developments + (ticker to result)
-                                store.refreshAccount()
-                                store.message = "Rozwinięto spółkę " + ticker + "."
-                            } catch (error: Exception) {
-                                store.message = error.message ?: "Nie udało się rozwinąć spółki."
-                            } finally {
-                                busyCompany = ""
-                            }
-                        }
-                    }
+                    CompanyDevelopmentCard(
+                        development,
+                        busyCompany == ticker,
+                        onUpgrade = { branch -> runCompanyAction(ticker, "upgrade", JSONObject().put("branch", branch), "Rozwinięto dział spółki " + ticker + ".") },
+                        onFund = { amount -> runCompanyAction(ticker, "capital", JSONObject().put("amount", amount), "Zasilono kasę spółki " + ticker + ".") },
+                        onWithdraw = { amount -> runCompanyAction(ticker, "dividend", JSONObject().put("amount", amount), "Wypłacono środki ze spółki " + ticker + ".") },
+                        onStaff = { action, count -> runCompanyAction(ticker, "staff", JSONObject().put("action", action).put("count", count), "Zaktualizowano zatrudnienie w " + ticker + ".") },
+                    )
                 }
             }
         }
@@ -166,34 +175,100 @@ fun TvCompanyTab(store: Store, scope: CoroutineScope) {
 }
 
 @Composable
-private fun CompanyDevelopmentCard(state: JSONObject, busy: Boolean, onUpgrade: (String) -> Unit) {
+private fun CompanyDevelopmentCard(
+    state: JSONObject,
+    busy: Boolean,
+    onUpgrade: (String) -> Unit,
+    onFund: (String) -> Unit,
+    onWithdraw: (String) -> Unit,
+    onStaff: (String, Int) -> Unit,
+) {
     val next = state.optJSONObject("next_costs")
     val maxLevel = state.optInt("max_level", 10)
+    val employees = state.optInt("employees", 3)
+    var amount by remember(state.optString("symbol")) { mutableStateOf("500") }
+    val cash = state.optString("cash", "0").toDoubleOrNull() ?: 0.0
+    val revenue = state.optString("hourly_revenue", "0").toDoubleOrNull() ?: 0.0
+    val expenses = state.optString("hourly_expenses", "0").toDoubleOrNull() ?: 0.0
+    val profit = state.optString("hourly_profit", "0").toDoubleOrNull() ?: 0.0
     TvCard {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically) {
             Column {
-                Text("ROZWÓJ FIRMY", color = Tv.Blue, fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                Text("Poziom " + state.optInt("company_level", 1), color = Color.White,
-                    fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                Text("CENTRUM ZARZĄDZANIA", color = Tv.Blue, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                Text("Poziom ${state.optInt("company_level", 1)}", color = Color.White,
+                    fontSize = 20.sp, fontWeight = FontWeight.Bold)
             }
             Column(horizontalAlignment = Alignment.End) {
                 Text("INDEKS ROZWOJU", color = Tv.Muted, fontSize = 8.sp, fontWeight = FontWeight.Bold)
                 Text(state.optInt("development_index", 100).toString(), color = Tv.Up,
-                    fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                    fontSize = 19.sp, fontWeight = FontWeight.Bold)
             }
         }
-        Text("Zainwestowano: " + fmtUsd(state.optString("invested", "0").toDoubleOrNull() ?: 0.0) + " USD",
-            color = Tv.Muted, fontSize = 10.sp, modifier = Modifier.padding(top = 5.dp, bottom = 10.dp))
-        CompanyBranch("BIURO I ZARZĄDZANIE", "office", state.optInt("office_level"),
-            next?.optLong("office", 500L) ?: 500L, maxLevel, busy, onUpgrade)
-        Spacer(Modifier.height(8.dp))
-        CompanyBranch("LABORATORIUM I R&D", "research", state.optInt("research_level"),
-            next?.optLong("research", 500L) ?: 500L, maxLevel, busy, onUpgrade)
-        Spacer(Modifier.height(8.dp))
-        CompanyBranch("MARKETING I MARKA", "marketing", state.optInt("marketing_level"),
-            next?.optLong("marketing", 500L) ?: 500L, maxLevel, busy, onUpgrade)
-        Text("Inwestycje rozwijają poziom firmy. Nie ustawiają automatycznie kursu akcji — ten nadal wynika z dopasowanych zleceń.",
+        Spacer(Modifier.height(10.dp))
+        Text("KASA SPÓŁKI", color = Tv.Muted, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+        Text(fmtUsd(cash) + " USD", color = Color.White, fontSize = 23.sp, fontWeight = FontWeight.Bold)
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            CompanyStat("PRZYCHÓD / H", fmtUsd(revenue))
+            CompanyStat("KOSZTY / H", fmtUsd(expenses))
+            CompanyStat("WYNIK / H", fmtUsd(profit))
+        }
+        Text("WYNIKI OD STARTU", color = Tv.Muted, fontSize = 8.sp, fontWeight = FontWeight.Bold,
+            modifier = Modifier.padding(top = 9.dp, bottom = 4.dp))
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            CompanyStat("PRZYCHÓD", fmtUsd(state.optString("revenue_total", "0").toDoubleOrNull() ?: 0.0))
+            CompanyStat("KOSZTY", fmtUsd(state.optString("expense_total", "0").toDoubleOrNull() ?: 0.0))
+            CompanyStat("DYWIDENDY", fmtUsd(state.optString("dividends_total", "0").toDoubleOrNull() ?: 0.0))
+        }
+        HorizontalDivider(Modifier.padding(vertical = 10.dp), color = Tv.Line)
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            CompanyStat("PRACOWNICY", employees.toString())
+            CompanyStat("KLIENCI", state.optInt("customers").toString())
+            CompanyStat("REPUTACJA", "${state.optDouble("reputation", 50.0).toInt()} / 100")
+            CompanyStat("JAKOŚĆ", "${state.optInt("product_quality", 40)} / 100")
+        }
+        Text("FINANSE I KADRY", color = Tv.Blue, fontSize = 10.sp, fontWeight = FontWeight.Bold,
+            modifier = Modifier.padding(top = 13.dp, bottom = 5.dp))
+        OutlinedTextField(
+            value = amount, onValueChange = { amount = it.filter { ch -> ch.isDigit() || ch == '.' || ch == ',' }.replace(',', '.') },
+            modifier = Modifier.fillMaxWidth(), singleLine = true, label = { Text("Kwota w USD") },
+            enabled = !busy,
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedTextColor = Color.White, unfocusedTextColor = Color.White,
+                focusedBorderColor = Tv.Blue, unfocusedBorderColor = Tv.Line,
+                focusedLabelColor = Tv.Blue, unfocusedLabelColor = Tv.Muted,
+            ),
+        )
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Button(onClick = { onFund(amount) }, enabled = !busy && (amount.toDoubleOrNull() ?: 0.0) > 0.0,
+                modifier = Modifier.weight(1f), colors = ButtonDefaults.buttonColors(containerColor = Tv.Blue)) {
+                Text("WPŁAĆ KAPITAŁ", color = Color(0xFF07131E), fontSize = 10.sp, fontWeight = FontWeight.Bold)
+            }
+            OutlinedButton(onClick = { onWithdraw(amount) }, enabled = !busy && (amount.toDoubleOrNull() ?: 0.0) > 0.0,
+                modifier = Modifier.weight(1f)) {
+                Text("WYPŁAĆ DYWIDENDĘ", fontSize = 10.sp)
+            }
+        }
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedButton(onClick = { onStaff("fire", 1) }, enabled = !busy && employees > 1,
+                modifier = Modifier.weight(1f)) { Text("ZWOLNIJ −1", fontSize = 10.sp) }
+            Button(onClick = { onStaff("hire", 1) }, enabled = !busy && employees < state.optInt("max_employees", 200),
+                modifier = Modifier.weight(1f), colors = ButtonDefaults.buttonColors(containerColor = Tv.Blue)) {
+                Text("ZATRUDNIJ +1", color = Color(0xFF07131E), fontSize = 10.sp, fontWeight = FontWeight.Bold)
+            }
+        }
+        Text("ROZWÓJ DZIAŁÓW", color = Tv.Blue, fontSize = 10.sp, fontWeight = FontWeight.Bold,
+            modifier = Modifier.padding(top = 14.dp, bottom = 7.dp))
+        CompanyBranch("BIURO I ZARZĄDZANIE", "office", state.optInt("office_level"), next?.optLong("office", 500L) ?: 500L, maxLevel, busy, onUpgrade)
+        Spacer(Modifier.height(7.dp))
+        CompanyBranch("LABORATORIUM I R&D", "research", state.optInt("research_level"), next?.optLong("research", 500L) ?: 500L, maxLevel, busy, onUpgrade)
+        Spacer(Modifier.height(7.dp))
+        CompanyBranch("MARKETING I SPRZEDAŻ", "marketing", state.optInt("marketing_level"), next?.optLong("marketing", 500L) ?: 500L, maxLevel, busy, onUpgrade)
+        Spacer(Modifier.height(7.dp))
+        CompanyBranch("PRODUKCJA I PRODUKT", "production", state.optInt("production_level"), next?.optLong("production", 500L) ?: 500L, maxLevel, busy, onUpgrade)
+        Spacer(Modifier.height(7.dp))
+        CompanyBranch("LOGISTYKA I OPERACJE", "logistics", state.optInt("logistics_level"), next?.optLong("logistics", 500L) ?: 500L, maxLevel, busy, onUpgrade)
+        Text("Firma działa w symulacji godzinowej. Rozwój wpływa na produktywność, popyt, jakość produktu i koszty. Dywidenda trafia proporcjonalnie do aktualnych akcjonariuszy, a kurs nadal wynika z dopasowanych zleceń.",
             color = Tv.Muted, fontSize = 9.sp, modifier = Modifier.padding(top = 10.dp))
     }
 }
@@ -207,14 +282,14 @@ private fun CompanyBranch(
         verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f)) {
             Text(label, color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold)
-            Text("Poziom " + level + " / " + maxLevel, color = Tv.Muted, fontSize = 10.sp,
+            Text("Poziom $level / $maxLevel", color = Tv.Muted, fontSize = 10.sp,
                 modifier = Modifier.padding(top = 3.dp))
         }
         Button(onClick = { onUpgrade(branch) }, enabled = !busy && level < maxLevel,
             contentPadding = PaddingValues(horizontal = 10.dp, vertical = 5.dp),
             colors = ButtonDefaults.buttonColors(containerColor = Tv.Blue),
             shape = RoundedCornerShape(9.dp)) {
-            Text(if (level >= maxLevel) "MAX" else "ROZWIŃ · " + fmtUsd(cost.toDouble()) + " USD",
+            Text(if (level >= maxLevel) "MAX" else "ROZWIŃ · ${fmtUsd(cost.toDouble())} USD",
                 color = Color(0xFF07131E), fontSize = 9.sp, fontWeight = FontWeight.Bold)
         }
     }

@@ -78,6 +78,56 @@ class LocalEngineTest {
         try { e.createAsset(s, "btcx", "Dup", "", bd("5")); fail() } catch (x: EngineError) { }
     }
 
+    @Test fun offlineBotsExposeDifferentAnalysisProfiles() {
+        val market = OfflineMarket(19)
+        val overview = market.botOverview()
+        assertEquals(4, overview.length())
+        val strategies = (0 until overview.length()).map { overview.getJSONObject(it).getString("strategy") }.toSet()
+        assertTrue(strategies.size >= 4)
+        assertTrue((0 until overview.length()).all { overview.getJSONObject(it).has("reason") })
+    }
+
+    @Test fun legacyOfflineSaveAddsFourthBotWithoutResettingWallets() {
+        val market = OfflineMarket(31)
+        val snapshot = market.snapshot()
+        val traders = snapshot.getJSONArray("traders")
+        val legacyTraders = org.json.JSONArray()
+        for (i in 0 until 3) legacyTraders.put(traders.getInt(i))
+        snapshot.put("traders", legacyTraders)
+        val restored = OfflineMarket(restoredState = snapshot)
+        assertEquals(4, restored.botOverview().length())
+        assertEquals(market.playerId, restored.playerId)
+        assertEquals(market.engine.accounts.size, restored.engine.accounts.size)
+        assertEquals(market.engine.accounts[market.playerId]!!.bal("USD").available,
+            restored.engine.accounts[restored.playerId]!!.bal("USD").available)
+        restored.engine.checkInvariants()
+    }
+
+    @Test fun offlineCompanyCapitalStaffAndProRataDividendKeepLedgerConsistent() {
+        val market = OfflineMarket(23)
+        val asset = market.engine.createUserAsset(market.playerId, "NOVA", "Nova Systems", "Test company", bd("1000000"))
+        market.registerCreatedCompany(asset)
+        val investor = market.engine.createAccount("Shareholder", false, bd("10000"))
+        market.engine.accounts.values.filter { it.isBot && it.name.startsWith("MM-") }.forEach { maker ->
+            market.engine.openOrdersOf(maker.id, "NOVA").forEach { market.engine.cancelOrder(maker.id, it.id) }
+        }
+        market.engine.placeOrder(market.playerId, "NOVA", "sell", "limit", bd("250000"), bd("0.01"))
+        market.engine.placeOrder(investor.id, "NOVA", "buy", "limit", bd("250000"), bd("0.01"))
+        market.fundCompany("NOVA", "1000")
+        val ownerBefore = market.engine.accounts[market.playerId]!!.bal("USD").available
+        val investorBefore = market.engine.accounts[investor.id]!!.bal("USD").available
+        val hired = market.manageCompanyStaff("NOVA", "hire", 2)
+        assertEquals(5, hired.getInt("employees"))
+        val fired = market.manageCompanyStaff("NOVA", "fire", 1)
+        assertEquals(4, fired.getInt("employees"))
+        val paid = market.withdrawCompany("NOVA", "100")
+        assertEquals(0, market.engine.accounts[market.playerId]!!.bal("USD").available.subtract(ownerBefore).compareTo(bd("75")))
+        assertEquals(0, market.engine.accounts[investor.id]!!.bal("USD").available.subtract(investorBefore).compareTo(bd("25")))
+        assertEquals("100", paid.getString("dividends_total"))
+        market.engine.checkInvariants()
+        assertTrue(market.getCompanyDevelopment("NOVA").getString("cash").toBigDecimal() > BigDecimal.ZERO)
+    }
+
     @Test fun botsKeepBooksConsistent() {
         val m = OfflineMarket(7)
         repeat(1500) { m.step() }

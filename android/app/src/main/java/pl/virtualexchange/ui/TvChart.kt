@@ -295,7 +295,7 @@ fun TvChart(
             shift = 0f
         }
     }
-    LaunchedEffect(intervalSec) { shift = 0f }
+    LaunchedEffect(symbol, intervalSec) { visible = 48f; shift = 0f; cross = null; draftA = null; draftB = null }
 
     val requestedVis = visible.roundToInt().coerceAtLeast(5)
     val vis = if (n > 0) requestedVis.coerceAtMost(n).coerceAtLeast(1) else requestedVis

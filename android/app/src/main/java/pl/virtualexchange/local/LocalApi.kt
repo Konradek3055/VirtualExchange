@@ -50,12 +50,29 @@ object LocalApi {
                     .put("username", e.accounts[m.playerId]?.name ?: "Gracz")
                     .toString()
 
+                method == "GET" && route == "bots" -> m.botOverview().toString()
+
                 method == "GET" && parts[0] == "companies" && parts.size == 3 && parts[2] == "development" ->
                     m.getCompanyDevelopment(parts[1]).toString()
 
                 method == "POST" && parts[0] == "companies" && parts.size == 3 && parts[2] == "upgrade" -> {
                     val b = body ?: bad("Brak danych")
                     m.upgradeCompany(parts[1], b.optString("branch")).toString()
+                }
+
+                method == "POST" && parts[0] == "companies" && parts.size == 3 && parts[2] == "capital" -> {
+                    val b = body ?: bad("Brak danych")
+                    m.fundCompany(parts[1], b.optString("amount")).toString()
+                }
+
+                method == "POST" && parts[0] == "companies" && parts.size == 3 && parts[2] == "dividend" -> {
+                    val b = body ?: bad("Brak danych")
+                    m.withdrawCompany(parts[1], b.optString("amount")).toString()
+                }
+
+                method == "POST" && parts[0] == "companies" && parts.size == 3 && parts[2] == "staff" -> {
+                    val b = body ?: bad("Brak danych")
+                    m.manageCompanyStaff(parts[1], b.optString("action"), b.optInt("count", 1)).toString()
                 }
 
                 method == "GET" && route == "stats" -> {
@@ -183,8 +200,10 @@ object LocalApi {
 
                 method == "POST" && route == "assets" -> {
                     val b = body ?: bad("Brak danych")
-                    assetJson(e.createUserAsset(m.playerId, b.optString("symbol"), b.optString("name"),
-                        b.optString("description"), dec(b.optString("total_supply"), "Podaż"))).toString()
+                    val asset = e.createUserAsset(m.playerId, b.optString("symbol"), b.optString("name"),
+                        b.optString("description"), dec(b.optString("total_supply"), "Podaż"))
+                    m.registerCreatedCompany(asset)
+                    assetJson(asset).toString()
                 }
 
                 else -> bad("Nie znaleziono", 404)

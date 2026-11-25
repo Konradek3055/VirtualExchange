@@ -85,6 +85,24 @@ def init_db():
         if "price_i" not in cols:   # migracja starszych baz: cena jako liczba całkowita (cena*1e8)
             db.execute("ALTER TABLE orders ADD COLUMN price_i INTEGER")
             db.execute("UPDATE orders SET price_i=CAST(ROUND(CAST(price AS REAL)*100000000) AS INTEGER) WHERE price IS NOT NULL")
+        company_cols = {r[1] for r in db.execute("PRAGMA table_info(company_development)")}
+        company_migrations = {
+            "production_level": "INTEGER NOT NULL DEFAULT 0",
+            "logistics_level": "INTEGER NOT NULL DEFAULT 0",
+            "employees": "INTEGER NOT NULL DEFAULT 3",
+            "cash": "TEXT NOT NULL DEFAULT '0'",
+            "revenue_total": "TEXT NOT NULL DEFAULT '0'",
+            "expense_total": "TEXT NOT NULL DEFAULT '0'",
+            "dividends_total": "TEXT NOT NULL DEFAULT '0'",
+            "last_revenue": "TEXT NOT NULL DEFAULT '0'",
+            "last_expense": "TEXT NOT NULL DEFAULT '0'",
+            "reputation": "REAL NOT NULL DEFAULT 50",
+            "customers": "INTEGER NOT NULL DEFAULT 0",
+            "last_settlement": "INTEGER NOT NULL DEFAULT 0",
+        }
+        for column, declaration in company_migrations.items():
+            if column not in company_cols:
+                db.execute(f"ALTER TABLE company_development ADD COLUMN {column} {declaration}")
         db.execute("CREATE INDEX IF NOT EXISTS idx_orders_book ON orders(symbol,side,status,id)")
         db.execute("CREATE INDEX IF NOT EXISTS idx_orders_match ON orders(symbol,side,status,price_i,id)")
         db.execute("CREATE INDEX IF NOT EXISTS idx_trades_symbol ON trades(symbol,id)")

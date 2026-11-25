@@ -135,6 +135,32 @@ fun TvHomeTab(
                 } }
             }
         }
+        if (store.bots.isNotEmpty()) {
+            item {
+                TvCard {
+                    Text("UCZESTNICY ALGORYTMICZNI", color = Tv.Blue, fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold, letterSpacing = 1.1.sp)
+                    Text("Co analizują boty", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                    store.bots.forEach { bot ->
+                        val decision = bot.optString("decision", "OBSERWUJ")
+                        val tone = when (decision) { "KUPUJ" -> Tv.Up; "SPRZEDAJ" -> Tv.Down; else -> Tv.Muted }
+                        Row(Modifier.fillMaxWidth().padding(top = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                Text(bot.optString("name") + " · " + bot.optString("strategy"),
+                                    color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                                Text(bot.optString("symbol") + " · " + bot.optString("reason"),
+                                    color = Tv.Muted, fontSize = 10.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                            }
+                            Column(horizontalAlignment = Alignment.End) {
+                                Text(decision, color = tone, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                Text("${bot.optDouble("confidence").toInt()}%", color = Tv.Muted, fontSize = 9.sp)
+                            }
+                        }
+                        HorizontalDivider(Modifier.padding(top = 8.dp), color = Tv.Line)
+                    }
+                }
+            }
+        }
         item {
             TvCard {
                 Text("OD INWESTORA DO WŁAŚCICIELA", color = Tv.Blue, fontSize = 10.sp,
