@@ -128,6 +128,39 @@ class LocalEngineTest {
         assertTrue(market.getCompanyDevelopment("NOVA").getString("cash").toBigDecimal() > BigDecimal.ZERO)
     }
 
+    @Test fun offlineClockFollowsInjectedWallClock() {
+        var now = 1_700_000_000_000L
+        val market = OfflineMarket(seed = 101, wallClock = { now }, consumerSpendRatePerHour = BigDecimal.ZERO)
+        now += 90_000L
+        market.step()
+        assertEquals(now, market.clockMs)
+    }
+
+    @Test fun newCompanyDoesNotReceiveArtificialTenDollarQuote() {
+        val market = OfflineMarket(seed = 103, consumerSpendRatePerHour = BigDecimal.ZERO)
+        val asset = market.engine.createUserAsset(market.playerId, "NOVA", "Nova Systems", "Test company", bd("1000000"))
+        market.registerCreatedCompany(asset)
+        assertEquals(0, asset.lastPrice.compareTo(BigDecimal.ZERO))
+        val book = market.engine.orderBook("NOVA", 5)
+        assertTrue(book.first.isEmpty() && book.second.isEmpty())
+    }
+
+    @Test fun companyRevenueUsesDemandPoolAndKeepsUsdTotalConstant() {
+        var now = 1_700_000_000_000L
+        val market = OfflineMarket(seed = 107, wallClock = { now }, consumerSpendRatePerHour = BigDecimal.ZERO)
+        val asset = market.engine.createUserAsset(market.playerId, "NOVA", "Nova Systems", "Test company", bd("1000000"))
+        market.registerCreatedCompany(asset)
+        market.fundCompany("NOVA", "1000")
+        val totalBefore = market.economyTotal()
+        now += OfflineMarket.HOUR_MS
+        market.step()
+        val company = market.getCompanyDevelopment("NOVA")
+        val realized = company.getString("revenue_total").toBigDecimal()
+        // Bez wydatków konsumentów firma nie może dostać przychodu wyłącznie za upływ czasu.
+        assertEquals(0, realized.compareTo(BigDecimal.ZERO))
+        assertEquals(0, totalBefore.compareTo(market.economyTotal()))
+    }
+
     @Test fun botsKeepBooksConsistent() {
         val m = OfflineMarket(7)
         repeat(1500) { m.step() }

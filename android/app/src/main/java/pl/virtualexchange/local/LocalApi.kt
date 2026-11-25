@@ -76,7 +76,7 @@ object LocalApi {
                 }
 
                 method == "GET" && route == "stats" -> {
-                    val cutoff = System.currentTimeMillis() - 86_400_000L
+                    val cutoff = m.clockMs - 86_400_000L
                     val out = JSONObject()
 
                     e.assets.values.forEach { asset ->

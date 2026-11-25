@@ -37,4 +37,6 @@ dependencies {
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     debugImplementation("androidx.compose.ui:ui-tooling")
     testImplementation("junit:junit:4.13.2")
+    // Androidowy org.json używa stubów w testach JVM; ta implementacja zapewnia działające metody.
+    testImplementation("org.json:json:20240303")
 }

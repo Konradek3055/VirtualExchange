@@ -48,6 +48,8 @@ object Api {
 
     private var appContext: Context? = null
     private var market: OfflineMarket? = null
+    /** Blokuje nadpisanie nieodczytywalnego zapisu nową, pustą sesją. */
+    private var offlinePersistenceBlocked = false
     private var botJob: Job? = null
     private val botScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
@@ -72,28 +74,34 @@ object Api {
     @Synchronized
     private fun localMarket(): OfflineMarket {
         var m = market
-
         if (m == null) {
             val context = appContext
-            val saved = context?.let { OfflinePersistence.load(it) }
-
-            m = try {
-                if (saved == null) OfflineMarket()
-                else OfflineMarket(restoredState = saved)
+            val saved = try {
+                context?.let { OfflinePersistence.load(it) }
             } catch (error: Exception) {
-                context?.let { OfflinePersistence.clear(it) }
-                OfflineMarket()
+                offlinePersistenceBlocked = true
+                android.util.Log.e("VirtualExchange", "Nie można odczytać zapisu offline; oryginalny plik pozostaje zachowany.", error)
+                null
             }
 
+            m = try {
+                if (offlinePersistenceBlocked || saved == null) OfflineMarket()
+                else OfflineMarket(restoredState = saved)
+            } catch (error: Exception) {
+                // Nie czyścimy pliku i nie zapisujemy na niego nowej sesji. Użytkownik może odzyskać zapis.
+                offlinePersistenceBlocked = true
+                android.util.Log.e("VirtualExchange", "Nie można odtworzyć zapisu offline; oryginalny plik pozostaje zachowany.", error)
+                OfflineMarket()
+            }
             market = m
-            persistOffline(m)
+            if (!offlinePersistenceBlocked) persistOffline(m)
         }
-
         return m
     }
 
     @Synchronized
     private fun persistOffline(m: OfflineMarket) {
+        if (offlinePersistenceBlocked) return
         val context = appContext ?: return
 
         try {
@@ -119,6 +127,7 @@ object Api {
 
         synchronized(this) {
             market = null
+            offlinePersistenceBlocked = false
             appContext?.let { OfflinePersistence.clear(it) }
         }
 

@@ -12,7 +12,12 @@ import java.util.Random
  *  - maker-boty stawiają drabinki zleceń kupna/sprzedaży wokół ostatniej ceny,
  *  - trader-boty wysyłają zlecenia market o różnej wielkości (zdarzają się duże).
  */
-class OfflineMarket(seed: Long = System.nanoTime(), restoredState: JSONObject? = null) {
+class OfflineMarket(
+    seed: Long = System.nanoTime(),
+    restoredState: JSONObject? = null,
+    private val wallClock: () -> Long = { System.currentTimeMillis() },
+    private val consumerSpendRatePerHour: BigDecimal = BigDecimal("0.00001"),
+) {
     val engine = LocalEngine()
     val rnd = Random(seed)
     val playerId: Int
@@ -20,7 +25,14 @@ class OfflineMarket(seed: Long = System.nanoTime(), restoredState: JSONObject? =
     private val traders = ArrayList<Int>()
     private val refPrices = LinkedHashMap<String, BigDecimal>()
     private val companyDevelopment = LinkedHashMap<String, JSONObject>()
-    private var simNow = System.currentTimeMillis()
+    private var simNow = wallClock()
+    /** Pula popytu finansowana z opłat, wydatków botów i kosztów firm. */
+    private var economyPool = BigDecimal.ZERO
+    /** Dochody gospodarstw domowych, wydawane stopniowo; nie są natychmiastowym popytem. */
+    private var householdPool = BigDecimal.ZERO
+    /** Skarb państwa: opłaty i podatki nie są popytem klientów. */
+    private var governmentTreasury = BigDecimal.ZERO
+    private var lastEconomyTick = simNow
 
     private class Seed(val symbol: String, val name: String, val supply: String, val price: String)
 
@@ -70,9 +82,19 @@ class OfflineMarket(seed: Long = System.nanoTime(), restoredState: JSONObject? =
         listOf("Kuba", "Ola", "Wieloryb", "Marek").forEach { traders.add(engine.createAccount(it, true, BigDecimal("1000000")).id) }
         ensureStarterAssets()
         warmUp(WARMUP_STEPS)
+        ensureTradeHistory()
+        lastEconomyTick = simNow
+        syncClock()
         } else {
             require(restoredState.optInt("version") == 1) {
                 "Nieobsługiwana wersja zapisu offline"
+            }
+
+            // Stare wersje przyspieszały zegar gry; przesuwamy ich oś czasu bez zmiany odstępów.
+            val savedClock = restoredState.optLong("simNow", 0L)
+            val drift = savedClock - wallClock()
+            if (restoredState.has("simNow") && drift > MAX_CLOCK_DRIFT_MS) {
+                rebaseSnapshotTimes(restoredState, drift)
             }
 
             engine.restore(restoredState.getJSONObject("engine"))
@@ -98,7 +120,7 @@ class OfflineMarket(seed: Long = System.nanoTime(), restoredState: JSONObject? =
                 refPrices[symbol] = BigDecimal(refs.getString(symbol))
             }
 
-            simNow = restoredState.optLong("simNow", System.currentTimeMillis())
+            simNow = restoredState.optLong("simNow", wallClock())
             engine.clock = { simNow }
 
             require(makers.isNotEmpty() && traders.isNotEmpty() && refPrices.isNotEmpty()) {
@@ -112,12 +134,23 @@ class OfflineMarket(seed: Long = System.nanoTime(), restoredState: JSONObject? =
                     companyDevelopment[key] = savedDevelopment.getJSONObject(key)
                 }
             }
-            // Migracja starych zapisów: dopisujemy nowe instrumenty do istniejącego rynku.
+            economyPool = restoredState.optString("economyPool", "0").toBigDecimalOrNull() ?: BigDecimal.ZERO
+            householdPool = restoredState.optString("householdPool", "0").toBigDecimalOrNull() ?: BigDecimal.ZERO
+            governmentTreasury = restoredState.optString("governmentTreasury", "0").toBigDecimalOrNull() ?: BigDecimal.ZERO
+            lastEconomyTick = if (restoredState.has("lastEconomyTick")) {
+                restoredState.getLong("lastEconomyTick")
+            } else {
+                companyDevelopment.values.maxOfOrNull { it.optLong("last_settlement", simNow) } ?: simNow
+            }
+            // Wycofaj stare oferty oparte na sztucznej cenie 10 USD.
+            dropLegacyUserReferencePrices()
             val added = ensureStarterAssets()
             added.forEach { symbol ->
                 makers.forEach { requote(it, symbol) }
-                repeat(10) { traderAction(symbol) }
+                repeat(10) { traderAction(symbol, alwaysAct = true) }
             }
+            syncClock()
+            settleEconomy()
         }
     }
 
@@ -144,6 +177,11 @@ class OfflineMarket(seed: Long = System.nanoTime(), restoredState: JSONObject? =
             .put("traders", traderRows)
             .put("refPrices", refs)
             .put("simNow", simNow)
+            .put("lastEconomyTick", lastEconomyTick)
+            .put("economyPool", economyPool.toPlainString())
+            .put("householdPool", householdPool.toPlainString())
+            .put("governmentTreasury", governmentTreasury.toPlainString())
+            .put("savedAt", wallClock())
             .put("companyDevelopment", development)
             .put("engine", engine.snapshot())
     }
@@ -151,7 +189,7 @@ class OfflineMarket(seed: Long = System.nanoTime(), restoredState: JSONObject? =
     /** Symulowana historia: boty handlują "w przyspieszonym czasie", żeby wykres nie był pusty po starcie. */
     private fun warmUp(steps: Int) {
         val stepMs = 20_000L
-        simNow = System.currentTimeMillis() - steps * stepMs
+        simNow = wallClock() - steps * stepMs
         engine.clock = { simNow }
         refPrices.keys.forEach { sym -> makers.forEach { requote(it, sym) } }
         repeat(steps) { step(stepMs) }
@@ -216,30 +254,172 @@ class OfflineMarket(seed: Long = System.nanoTime(), restoredState: JSONObject? =
         return Pair(revenue, costs)
     }
 
-    private fun settleCompany(symbol: String) {
-        val state = companyState(symbol)
-        val last = state.optLong("last_settlement", simNow)
-        val hours = ((simNow - last) / 3_600_000L).coerceIn(0L, 168L)
-        if (hours <= 0L) return
-        val (hourlyRevenue, hourlyCost) = companyHourlyRates(state)
-        val revenue = hourlyRevenue.multiply(BigDecimal(hours))
-        val expectedCost = hourlyCost.multiply(BigDecimal(hours))
-        val available = stateDecimal(state, "cash").add(revenue)
-        val paidCost = expectedCost.min(available)
-        val cash = available.subtract(paidCost).setScale(2, RoundingMode.HALF_UP)
-        val profitable = revenue >= expectedCost
-        val reputationDelta = if (profitable) 0.04 * hours else -0.12 * hours
-        val reputation = (state.optDouble("reputation", 50.0) + reputationDelta).coerceIn(0.0, 100.0)
-        val employees = state.optInt("employees", 3)
-        val customers = ((25 + employees * 10 + state.optInt("marketing_level") * 12
-            + state.optInt("production_level") * 8) * (0.5 + reputation / 100.0)).toInt().coerceAtLeast(0)
-        state.put("cash", cash.stripTrailingZeros().toPlainString())
-            .put("revenue_total", stateDecimal(state, "revenue_total").add(revenue).stripTrailingZeros().toPlainString())
-            .put("expense_total", stateDecimal(state, "expense_total").add(paidCost).stripTrailingZeros().toPlainString())
-            .put("last_revenue", revenue.stripTrailingZeros().toPlainString())
-            .put("last_expense", paidCost.stripTrailingZeros().toPlainString())
-            .put("reputation", reputation).put("customers", customers)
-            .put("last_settlement", last + hours * 3_600_000L)
+    /**
+     * Rozliczenie całej gospodarki co godzinę czasu gry. Przychód firm jest ograniczony
+     * realną pulą wydatków uczestników, a nie samym upływem czasu.
+     */
+    private fun settleEconomy() {
+        val elapsedHours = (simNow - lastEconomyTick) / HOUR_MS
+        if (elapsedHours <= 0L) return
+        val hours = elapsedHours.coerceAtMost(MAX_CATCHUP_HOURS)
+        repeat(hours.toInt()) { economyHour() }
+        // Nie nadrabiamy bez limitu długiej nieobecności; przesuwamy zegar do teraz.
+        lastEconomyTick = if (elapsedHours > MAX_CATCHUP_HOURS) simNow else lastEconomyTick + hours * HOUR_MS
+        companyDevelopment.values.forEach { it.put("last_settlement", lastEconomyTick) }
+    }
+
+    private fun economyHour() {
+        val symbols = companyDevelopment.keys.toList()
+        if (symbols.isEmpty()) return
+
+        // Boty oraz gospodarstwa domowe wydają tylko część posiadanej gotówki.
+        // Dochód pracowników nie staje się automatycznie popytem w tej samej chwili.
+        if (consumerSpendRatePerHour.signum() > 0) {
+            engine.accounts.values.toList().filter { it.isBot }.forEach { bot ->
+                val spend = bot.bal(LocalEngine.USD).available
+                    .multiply(consumerSpendRatePerHour).setScale(2, RoundingMode.DOWN)
+                if (spend.signum() > 0) {
+                    engine.spendUsd(bot.id, spend)
+                    economyPool = economyPool.add(spend)
+                }
+            }
+            val householdSpend = householdPool.multiply(consumerSpendRatePerHour).setScale(2, RoundingMode.DOWN)
+            if (householdSpend.signum() > 0) {
+                householdPool = householdPool.subtract(householdSpend)
+                economyPool = economyPool.add(householdSpend)
+            }
+        }
+
+        // Zdolność produkcyjna ogranicza sprzedaż. Firmy dzielą tylko środki, które faktycznie są w puli.
+        val states = symbols.associateWith { companyState(it) }
+        val capacities = states.mapValues { companyHourlyRates(it.value).first }
+        val totalCapacity = capacities.values.fold(BigDecimal.ZERO) { a, b -> a.add(b) }
+        val demand = economyPool.max(BigDecimal.ZERO).min(totalCapacity)
+        val revenues = symbols.associateWith { symbol ->
+            if (demand.signum() <= 0 || totalCapacity.signum() <= 0) BigDecimal.ZERO
+            else demand.multiply(capacities.getValue(symbol)).divide(totalCapacity, 2, RoundingMode.DOWN)
+        }
+        val paidRevenue = revenues.values.fold(BigDecimal.ZERO) { a, b -> a.add(b) }
+        economyPool = economyPool.subtract(paidRevenue)
+
+        // Koszty wracają do puli jako płatności dla pracowników i dostawców.
+        symbols.forEach { symbol ->
+            val state = states.getValue(symbol)
+            val expectedCost = companyHourlyRates(state).second
+            val earned = revenues.getValue(symbol)
+            val available = stateDecimal(state, "cash").add(earned)
+            val paidCost = expectedCost.min(available.max(BigDecimal.ZERO))
+            householdPool = householdPool.add(paidCost)
+            val reputationDelta = when {
+                earned >= expectedCost -> 0.04
+                paidCost < expectedCost -> -0.12
+                else -> -0.04
+            }
+            val reputation = (state.optDouble("reputation", 50.0) + reputationDelta).coerceIn(0.0, 100.0)
+            val employees = state.optInt("employees", 3)
+            val customers = ((25 + employees * 10 + state.optInt("marketing_level") * 12
+                + state.optInt("production_level") * 8) * (0.5 + reputation / 100.0)).toInt().coerceAtLeast(0)
+            state.put("cash", available.subtract(paidCost).setScale(2, RoundingMode.HALF_UP)
+                    .stripTrailingZeros().toPlainString())
+                .put("revenue_total", stateDecimal(state, "revenue_total").add(earned).stripTrailingZeros().toPlainString())
+                .put("expense_total", stateDecimal(state, "expense_total").add(paidCost).stripTrailingZeros().toPlainString())
+                .put("last_revenue", earned.stripTrailingZeros().toPlainString())
+                .put("last_expense", paidCost.stripTrailingZeros().toPlainString())
+                .put("reputation", reputation)
+                .put("customers", customers)
+        }
+    }
+
+    /** Publiczny zegar rynku, wspólny dla wykresów, statystyk i rozliczeń. */
+    val clockMs: Long get() = simNow
+
+    /** Synchronizacja do zegara telefonu. Nigdy nie cofa historii transakcji. */
+    @Synchronized
+    fun syncClock() {
+        val realNow = wallClock()
+        if (realNow > simNow) simNow = realNow
+        engine.clock = { simNow }
+    }
+
+    /** Suma USD w kontach, puli gospodarki i kasach wszystkich spółek. */
+    @Synchronized
+    fun economyTotal(): BigDecimal {
+        var total = engine.issuedUsd().add(economyPool).add(householdPool).add(governmentTreasury)
+        companyDevelopment.values.forEach { total = total.add(stateDecimal(it, "cash")) }
+        return total
+    }
+
+    @Synchronized
+    fun demandPool(): BigDecimal = economyPool
+
+    @Synchronized
+    fun householdIncomePool(): BigDecimal = householdPool
+
+    /** Cena odniesienia: tylko aktywa startowe albo wartość gotówki spółki / podaż akcji. */
+    private fun referencePrice(symbol: String): BigDecimal? {
+        refPrices[symbol]?.let { return it }
+        val asset = engine.assets[symbol] ?: return null
+        if (asset.creatorId == null || asset.supply.signum() <= 0) return null
+        val state = companyDevelopment[symbol] ?: return null
+        val cash = stateDecimal(state, "cash")
+        if (cash.signum() <= 0) return null
+        return cash.divide(asset.supply, 8, RoundingMode.DOWN).takeIf { it.signum() > 0 }
+    }
+
+    /** Boty działają tylko na rynku z ceną odniesienia albo realną transakcją. */
+    private fun botUniverse(): List<String> = engine.assets.keys.filter { symbol ->
+        referencePrice(symbol) != null || (engine.assets[symbol]?.lastPrice?.signum() ?: 0) > 0
+    }
+
+    private fun hasLiquidity(symbol: String): Boolean =
+        engine.orderBook(symbol, 1).let { it.first.isNotEmpty() || it.second.isNotEmpty() }
+
+    /** Uzupełnia startową historię realnymi transakcjami, nie ręcznie generowanymi świecami. */
+    private fun ensureTradeHistory(minTrades: Int = 8, attempts: Int = 80) {
+        botUniverse().forEach { symbol ->
+            var left = attempts
+            while (left-- > 0 && engine.recentTrades(symbol, minTrades).size < minTrades) {
+                traderAction(symbol, alwaysAct = true)
+            }
+        }
+    }
+
+    /** Usuwa stare oferty makerów dla spółek o sztucznej cenie 10 USD. */
+    private fun dropLegacyUserReferencePrices() {
+        val legacy = engine.assets.values.filter { it.creatorId != null && refPrices.containsKey(it.symbol) }
+        legacy.forEach { asset ->
+            refPrices.remove(asset.symbol)
+            makers.forEach { maker ->
+                engine.openOrdersOf(maker, asset.symbol).forEach { engine.cancelOrder(maker, it.id) }
+            }
+        }
+    }
+
+    /** Przesuwa stare znaczniki czasu, jeśli poprzednia wersja przyspieszała simNow względem zegara telefonu. */
+    private fun rebaseSnapshotTimes(state: JSONObject, delta: Long) {
+        val eng = state.getJSONObject("engine")
+        fun shift(rows: JSONArray?, key: String) {
+            if (rows == null) return
+            for (i in 0 until rows.length()) {
+                val row = rows.getJSONObject(i)
+                if (row.has(key)) row.put(key, row.getLong(key) - delta)
+            }
+        }
+        shift(eng.optJSONArray("trades"), "ts")
+        shift(eng.optJSONArray("orders"), "createdAt")
+        shift(eng.optJSONArray("assets"), "createdAt")
+        state.put("simNow", state.getLong("simNow") - delta)
+        if (state.has("lastEconomyTick")) state.put("lastEconomyTick", state.getLong("lastEconomyTick") - delta)
+        val development = state.optJSONObject("companyDevelopment")
+        if (development != null) {
+            val keys = development.keys()
+            while (keys.hasNext()) {
+                val company = development.getJSONObject(keys.next())
+                if (company.has("last_settlement")) {
+                    company.put("last_settlement", company.getLong("last_settlement") - delta)
+                }
+            }
+        }
     }
 
     private fun companyPayload(symbol: String, state: JSONObject): JSONObject {
@@ -276,6 +456,7 @@ class OfflineMarket(seed: Long = System.nanoTime(), restoredState: JSONObject? =
             .put("next_costs", JSONObject().put("office", next(office)).put("research", next(research))
                 .put("marketing", next(marketing)).put("production", next(production)).put("logistics", next(logistics)))
             .put("max_level", 10).put("max_employees", 200)
+            .put("demand_pool", economyPool.toPlainString())
     }
 
     @Synchronized
@@ -283,7 +464,7 @@ class OfflineMarket(seed: Long = System.nanoTime(), restoredState: JSONObject? =
         val symbol = symbolInput.uppercase()
         val asset = engine.assets[symbol] ?: throw EngineError("Nie znaleziono spółki")
         if (asset.creatorId != playerId) throw EngineError("Rozwijać możesz tylko własną spółkę")
-        settleCompany(symbol)
+        settleEconomy()
         return companyPayload(symbol, companyState(symbol))
     }
 
@@ -294,13 +475,14 @@ class OfflineMarket(seed: Long = System.nanoTime(), restoredState: JSONObject? =
         if (asset.creatorId != playerId) throw EngineError("Rozwijać możesz tylko własną spółkę")
         if (branch !in listOf("office", "research", "marketing", "production", "logistics"))
             throw EngineError("Nieznana gałąź rozwoju")
-        settleCompany(symbol)
+        settleEconomy()
         val state = companyState(symbol)
         val key = branch + "_level"
         val level = state.optInt(key)
         if (level >= 10) throw EngineError("Ta gałąź osiągnęła maksymalny poziom")
         val cost = BigDecimal(500L * (level + 1) * (level + 1))
         engine.spendUsd(playerId, cost)
+        economyPool = economyPool.add(cost)
         val invested = stateDecimal(state, "invested").add(cost)
         state.put(key, level + 1).put("invested", invested.stripTrailingZeros().toPlainString())
         return companyPayload(symbol, state)
@@ -315,7 +497,7 @@ class OfflineMarket(seed: Long = System.nanoTime(), restoredState: JSONObject? =
         val amount = rawAmount.toBigDecimalOrNull() ?: throw EngineError("Nieprawidłowa kwota")
         if (amount.signum() <= 0 || amount > BigDecimal("1000000000") || amount.stripTrailingZeros().scale().coerceAtLeast(0) > 2)
             throw EngineError("Kwota musi wynosić od 0,01 do 1 000 000 000 USD i mieć maksymalnie 2 miejsca po przecinku")
-        settleCompany(symbol)
+        settleEconomy()
         engine.spendUsd(playerId, amount)
         state.put("cash", stateDecimal(state, "cash").add(amount).stripTrailingZeros().toPlainString())
         return companyPayload(symbol, state)
@@ -330,7 +512,7 @@ class OfflineMarket(seed: Long = System.nanoTime(), restoredState: JSONObject? =
         val amount = rawAmount.toBigDecimalOrNull() ?: throw EngineError("Nieprawidłowa kwota")
         if (amount.signum() <= 0 || amount > BigDecimal("1000000000") || amount.stripTrailingZeros().scale().coerceAtLeast(0) > 2)
             throw EngineError("Kwota musi wynosić od 0,01 do 1 000 000 000 USD i mieć maksymalnie 2 miejsca po przecinku")
-        settleCompany(symbol)
+        settleEconomy()
         val cash = stateDecimal(state, "cash")
         if (cash < amount) throw EngineError("Za mało środków w kasie spółki")
         val holders = engine.accounts.values.mapNotNull { holder ->
@@ -368,7 +550,7 @@ class OfflineMarket(seed: Long = System.nanoTime(), restoredState: JSONObject? =
         val asset = engine.assets[symbol] ?: throw EngineError("Nie znaleziono spółki")
         if (asset.creatorId != playerId) throw EngineError("Nie jesteś właścicielem spółki")
         if (action !in listOf("hire", "fire") || count !in 1..20) throw EngineError("Nieprawidłowa operacja kadrowa")
-        settleCompany(symbol)
+        settleEconomy()
         val state = companyState(symbol)
         val employees = state.optInt("employees", 3)
         var cash = stateDecimal(state, "cash")
@@ -377,12 +559,14 @@ class OfflineMarket(seed: Long = System.nanoTime(), restoredState: JSONObject? =
             val fee = BigDecimal(count * 75)
             if (cash < fee) throw EngineError("Kasa spółki potrzebuje ${fee} USD na rekrutację")
             cash = cash.subtract(fee)
+            householdPool = householdPool.add(fee)
             state.put("employees", employees + count)
         } else {
             if (employees - count < 1) throw EngineError("Firma musi zatrudniać co najmniej jedną osobę")
             val severance = BigDecimal(count * 35)
             if (cash < severance) throw EngineError("Kasa spółki potrzebuje ${severance} USD na odprawy")
             cash = cash.subtract(severance)
+            householdPool = householdPool.add(severance)
             state.put("employees", employees - count)
         }
         state.put("cash", cash.stripTrailingZeros().toPlainString())
@@ -391,34 +575,37 @@ class OfflineMarket(seed: Long = System.nanoTime(), restoredState: JSONObject? =
 
     @Synchronized
     fun registerCreatedCompany(asset: Asset) {
-        // Referencyjna wycena służy wyłącznie botom do wystawienia ofert. lastPrice nadal pozostaje 0
-        // i zmieni się dopiero po pierwszej rzeczywistej transakcji w silniku zleceń.
-        if (!refPrices.containsKey(asset.symbol)) refPrices[asset.symbol] = BigDecimal("10.00")
+        // Opłata została już pobrana przez LocalEngine.createUserAsset; trafia do skarbu, nie do popytu klientów.
+        if (!companyDevelopment.containsKey(asset.symbol)) governmentTreasury = governmentTreasury.add(LocalEngine.LISTING_FEE)
         companyState(asset.symbol)
-        makers.forEach { requote(it, asset.symbol) }
     }
 
+    /** Krok botów. Domyślnie korzysta z rzeczywistego zegara telefonu; jawny argument służy tylko testom/rozgrzewce. */
     @Synchronized
-    fun step(simulatedMs: Long = 60_000L) {
+    fun step(simulatedMs: Long = 0L) {
         if (simulatedMs > 0L) {
             simNow += simulatedMs
             engine.clock = { simNow }
+        } else {
+            syncClock()
         }
-        if (rnd.nextDouble() < 0.62 && refPrices.isNotEmpty()) {
-            val symbol = refPrices.keys.elementAt(rnd.nextInt(refPrices.size))
+        val universe = botUniverse()
+        if (rnd.nextDouble() < 0.62 && universe.isNotEmpty()) {
+            val symbol = universe[rnd.nextInt(universe.size)]
             requote(makers[rnd.nextInt(makers.size)], symbol)
         }
         repeat(1 + rnd.nextInt(2)) { traderAction() }
-        companyDevelopment.keys.toList().forEach { settleCompany(it) }
+        settleEconomy()
         engine.prune()
     }
+
 
     private fun px(v: BigDecimal): BigDecimal = v.setScale(if (v >= BigDecimal.ONE) 2 else 6, RoundingMode.HALF_UP)
 
     private fun requote(maker: Int, symbol: String) {
         engine.openOrdersOf(maker, symbol).forEach { engine.cancelOrder(maker, it.id) }
         val asset = engine.assets[symbol] ?: return
-        val ref = refPrices[symbol] ?: return
+        val ref = referencePrice(symbol) ?: return
         val history = engine.recentTrades(symbol, 32).asReversed()
         val last = if (asset.lastPrice.signum() > 0) asset.lastPrice else ref
         val prices = history.map { it.price.toDouble() }.filter { it > 0.0 }
@@ -450,7 +637,8 @@ class OfflineMarket(seed: Long = System.nanoTime(), restoredState: JSONObject? =
         val asset = engine.assets[symbol] ?: return BotSignal(0.0, 0.0, 0.0, 0.0, 0.0)
         val history = engine.recentTrades(symbol, 64).asReversed()
         val prices = history.map { it.price.toDouble() }.filter { it.isFinite() && it > 0.0 }
-        val reference = (refPrices[symbol] ?: asset.lastPrice.takeIf { it.signum() > 0 } ?: BigDecimal.ONE).toDouble()
+        val reference = (referencePrice(symbol) ?: asset.lastPrice.takeIf { it.signum() > 0 }
+            ?: return BotSignal(0.0, 0.0, 0.0, 0.0, 0.0)).toDouble()
         val last = asset.lastPrice.takeIf { it.signum() > 0 }?.toDouble() ?: prices.lastOrNull() ?: reference
         fun trend(window: Int): Double {
             if (prices.size < 2) return 0.0
@@ -479,7 +667,7 @@ class OfflineMarket(seed: Long = System.nanoTime(), restoredState: JSONObject? =
     fun botOverview(): JSONArray {
         val out = JSONArray()
         traders.forEachIndexed { index, id ->
-            val best = refPrices.keys.toList().map { it to signalFor(id, it) }
+            val best = botUniverse().map { it to signalFor(id, it) }
                 .maxByOrNull { kotlin.math.abs(it.second.value) }
             val symbol = best?.first ?: "BTC"
             val signal = best?.second ?: BotSignal(0.0, 0.0, 0.0, 0.0, 0.0)
@@ -505,30 +693,38 @@ class OfflineMarket(seed: Long = System.nanoTime(), restoredState: JSONObject? =
         return out
     }
 
-    private fun traderAction(forcedSymbol: String? = null) {
+    private fun traderAction(forcedSymbol: String? = null, alwaysAct: Boolean = false) {
         if (traders.isEmpty()) return
         val trader = traders[rnd.nextInt(traders.size)]
-        val universe = refPrices.keys.toList()
+        val universe = botUniverse()
         if (universe.isEmpty()) return
-        val symbols = if (forcedSymbol != null) {
-            universe.filter { it == forcedSymbol }
+
+        // Kontrolowana eksploracja zapobiega pomijaniu rynków o słabszym sygnale.
+        val explore = forcedSymbol == null && rnd.nextDouble() < EXPLORE_PROBABILITY
+        val chosen: Pair<String, BotSignal>
+        if (explore) {
+            val liquid = universe.filter { hasLiquidity(it) }
+            if (liquid.isEmpty()) return
+            val symbol = liquid[rnd.nextInt(liquid.size)]
+            chosen = symbol to signalFor(trader, symbol)
         } else {
-            // Próbka kilku rynków ogranicza koszt analizy podczas 400 kroków rozgrzewki.
-            val sample = linkedSetOf<String>()
-            repeat(minOf(6, universe.size)) { sample.add(universe[rnd.nextInt(universe.size)]) }
-            sample.toList()
+            val symbols = if (forcedSymbol != null) universe.filter { it == forcedSymbol } else {
+                val sample = linkedSetOf<String>()
+                repeat(minOf(6, universe.size)) { sample.add(universe[rnd.nextInt(universe.size)]) }
+                sample.toList()
+            }
+            if (symbols.isEmpty()) return
+            val ranked = symbols.map { it to signalFor(trader, it) }
+                .sortedByDescending { kotlin.math.abs(it.second.value) }
+            chosen = ranked.firstOrNull { hasLiquidity(it.first) } ?: return
         }
-        if (symbols.isEmpty()) return
-        val ranked = symbols.map { it to signalFor(trader, it) }
-            .sortedByDescending { kotlin.math.abs(it.second.value) }
-        val chosen = ranked.firstOrNull { (candidate, _) ->
-            engine.orderBook(candidate, 1).let { it.first.isNotEmpty() || it.second.isNotEmpty() }
-        } ?: return
+
         val symbol = chosen.first
-        val signal = chosen.second.value
         val profile = traders.indexOf(trader)
+        val signal = chosen.second.value
+        val mustAct = explore || alwaysAct
         val effectiveSignal = if (kotlin.math.abs(signal) < 0.0008) {
-            if (rnd.nextDouble() > 0.16) return
+            if (!mustAct && rnd.nextDouble() > 0.16) return
             if (rnd.nextBoolean()) 0.001 else -0.001
         } else signal
         val side = if (effectiveSignal >= 0.0) "buy" else "sell"
@@ -536,25 +732,34 @@ class OfflineMarket(seed: Long = System.nanoTime(), restoredState: JSONObject? =
         val asset = engine.assets[symbol] ?: return
         val price = asset.lastPrice.takeIf { it.signum() > 0 }
             ?: engine.orderBook(symbol, 1).let { it.second.firstOrNull()?.price ?: it.first.firstOrNull()?.price }
-            ?: refPrices[symbol] ?: return
+            ?: referencePrice(symbol) ?: return
         if (price.signum() <= 0) return
+
         val risk = if (profile == 3) 0.04 else 0.015
-        val requestedNotional = (300.0 + kotlin.math.abs(effectiveSignal) * 100_000.0)
-            .coerceIn(250.0, if (profile == 3) 40_000.0 else 12_000.0)
-        val target = BigDecimal.valueOf(requestedNotional)
+        val notional = BigDecimal.valueOf((300.0 + kotlin.math.abs(effectiveSignal) * 100_000.0)
+            .coerceIn(250.0, if (profile == 3) 40_000.0 else 12_000.0))
         val quantity = if (side == "buy") {
-            val budget = target.min(account.bal(LocalEngine.USD).available.multiply(BigDecimal.valueOf(risk)))
+            val budget = notional.min(account.bal(LocalEngine.USD).available.multiply(BigDecimal.valueOf(risk)))
             budget.divide(price, 4, RoundingMode.DOWN)
         } else {
             val holding = account.bal(symbol).available
-            target.divide(price, 4, RoundingMode.DOWN).min(holding.multiply(BigDecimal.valueOf(risk)).setScale(4, RoundingMode.DOWN))
+            notional.divide(price, 4, RoundingMode.DOWN)
+                .min(holding.multiply(BigDecimal.valueOf(risk)).setScale(4, RoundingMode.DOWN))
         }
         if (quantity.signum() <= 0) return
-        try { engine.placeOrder(trader, symbol, side, "market", quantity, null) }
-        catch (_: EngineError) { /* Brak płynności nie tworzy sztucznego obrotu. */ }
+        try {
+            engine.placeOrder(trader, symbol, side, "market", quantity, null)
+        } catch (_: EngineError) {
+            // Brak płynności lub środków nie tworzy sztucznego obrotu.
+        }
     }
 
     companion object {
         const val WARMUP_STEPS = 400
+        const val HOUR_MS = 3_600_000L
+        const val MAX_CATCHUP_HOURS = 168L
+        const val MAX_CLOCK_DRIFT_MS = 300_000L
+        const val EXPLORE_PROBABILITY = 0.30
+        val DEFAULT_CONSUMER_SPEND_RATE = BigDecimal("0.00001")
     }
 }

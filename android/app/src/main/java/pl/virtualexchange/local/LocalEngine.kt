@@ -71,6 +71,8 @@ class LocalEngine(var clock: () -> Long = { System.currentTimeMillis() }) {
         val MAX_QTY = BigDecimal("1e24")
         private const val MAX_TRADES = 20000
         private const val MAX_ORDERS = 4000
+        /** Opłata za utworzenie spółki; trafia do puli gospodarki. */
+        val LISTING_FEE = BigDecimal("100")
     }
 
     private val lock = Any()
@@ -123,13 +125,16 @@ class LocalEngine(var clock: () -> Long = { System.currentTimeMillis() }) {
         val account = accounts[accountId] ?: throw EngineError("Konto nie istnieje")
         val owned = assets.values.count { it.creatorId == accountId }
         if (owned >= 3) throw EngineError("Limit 3 utworzonych spółek na gracza")
-        val fee = BigDecimal("100")
+        val fee = LISTING_FEE
         val cash = account.bal(USD)
         if (cash.available < fee) throw EngineError("Opłata emisyjna wynosi 100 USD")
         val asset = createAsset(accountId, symbol, name, description, supply)
         spendUsd(accountId, fee)
         asset
     }
+
+    /** Suma USD na kontach (uwzględnia salda dostępne i zablokowane). */
+    fun issuedUsd(): BigDecimal = synchronized(lock) { issued[USD] ?: BigDecimal.ZERO }
 
     fun spendUsd(accountId: Int, amount: BigDecimal) = synchronized(lock) {
         if (amount.signum() <= 0) throw EngineError("Nieprawidłowa kwota inwestycji")

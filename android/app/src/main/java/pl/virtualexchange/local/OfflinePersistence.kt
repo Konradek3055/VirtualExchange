@@ -11,15 +11,20 @@ object OfflinePersistence {
 
     @Synchronized
     fun load(context: Context): JSONObject? {
-        val file = AtomicFile(File(context.filesDir, FILE_NAME))
+        val path = File(context.filesDir, FILE_NAME)
+        val backupPath = File(context.filesDir, "$FILE_NAME.bak")
+        if (!path.exists() && !backupPath.exists()) return null
 
+        val file = AtomicFile(path)
         return try {
-            file.openRead().bufferedReader(Charsets.UTF_8).use {
-                JSONObject(it.readText())
+            file.openRead().bufferedReader(Charsets.UTF_8).use { reader ->
+                val raw = reader.readText()
+                require(raw.isNotBlank()) { "Zapis offline jest pusty" }
+                JSONObject(raw)
             }
-        } catch (_: Exception) {
-            file.delete()
-            null
+        } catch (error: Exception) {
+            // Nie usuwaj pliku: może zawierać jedyną kopię portfeli i historii użytkownika.
+            throw IllegalStateException("Zapis offline istnieje, ale nie można go odczytać. Plik nie został usunięty.", error)
         }
     }
 
