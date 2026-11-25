@@ -8,3 +8,4 @@ local.properties
 .idea/
 .pytest_cache/
 *.sqlite3
+backend/*.bak

@@ -12,3 +12,5 @@ market buy z ograniczeniem środków, brak podwójnego wydania, self-trade, wali
 (bez float), świece tylko z realnych transakcji, WebSocket oraz losowy stres z kontrolą niezmienników
 (stała podaż USD i aktywów, brak ujemnych sald, blokady == otwarte zlecenia).
 Wynik na dzień utworzenia: 24 testy zaliczone. Android nie był kompilowany lokalnie - pierwszą weryfikacją jest GitHub Actions.
+
+`tests/test_economy_core.py` (7) i `tests/test_economy_integration.py` (10): migracje, trwałość, API, ticki, rollback, zgodność ze starym systemem. Razem 52 testy.

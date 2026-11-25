@@ -5,6 +5,7 @@ from .db import init_db,connect
 from .schemas import CreateAccount,OrderIn,AssetCreate
 from .engine import place_order,cancel_order,seed
 from .assets import asset_info, create_user_asset, report_asset
+from .economy.api import router as economy_router
 from .companies import (get_company_development, upgrade_company, fund_company, withdraw_company, manage_company_staff)
 import calendar
 import secrets
@@ -13,6 +14,7 @@ import sqlite3
 from decimal import Decimal
 
 app = FastAPI(title="VirtualExchange API",version="1.0")
+app.include_router(economy_router)
 app.add_middleware(CORSMiddleware,allow_origins=["*"],allow_methods=["*"],allow_headers=["*"])
 sockets = {}
 

@@ -73,6 +73,8 @@ class Ledger:
         self.balances: Dict[str, Decimal] = {}
         self.money_accounts: Set[str] = set()
         self.current_tick = 0
+        # Persistent adapters hydrate a ledger without its history; ids continue after this offset.
+        self.entry_offset = 0
 
     def register_account(self, account: str) -> None:
         if not isinstance(account, str) or not account.strip():
@@ -109,7 +111,7 @@ class Ledger:
         self.balances[debit] = money(self.balances[debit] + value)
         self.balances[credit] = money(self.balances[credit] - value)
         entry = LedgerEntry(
-            entry_id=len(self.entries) + 1,
+            entry_id=self.entry_offset + len(self.entries) + 1,
             tick=self.current_tick,
             debit_account=debit,
             credit_account=credit,
