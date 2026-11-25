@@ -8,7 +8,9 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.*
 import androidx.compose.foundation.shape.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.BarChart
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Timeline
@@ -111,6 +113,7 @@ fun TerminalChartTab(store: Store, onTrade: () -> Unit) {
     var showPicker by remember { mutableStateOf(false) }
     var showIndicators by remember { mutableStateOf(false) }
     var showDraw by remember { mutableStateOf(false) }
+    var showType by remember { mutableStateOf(false) }
     var rangeReq by remember { mutableStateOf<RangeReq?>(null) }
     var rangeId by remember { mutableIntStateOf(0) }
     val drawings = store.drawings[store.selected] ?: emptyList()
@@ -126,26 +129,34 @@ fun TerminalChartTab(store: Store, onTrade: () -> Unit) {
             intervalSec, rangeReq, store.indicators, store.tool, drawings,
             onDrawingsChange = { list -> store.drawings[store.selected] = list },
             onToolDone = { store.tool = DrawTool.NONE },
+            chartType = store.chartType,
             modifier = Modifier.weight(1f).fillMaxWidth()
         )
         Row(
             Modifier.fillMaxWidth().background(Color(0xFF0A0A0A)).padding(horizontal = 10.dp, vertical = 2.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            TextButton(onClick = { showPicker = true }) {
-                Text(store.selected, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+            Row(
+                Modifier.weight(1f).horizontalScroll(rememberScrollState()),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                TextButton(onClick = { showPicker = true }) {
+                    Text(store.selected, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                }
+                TextButton(onClick = { showInterval = true }) {
+                    Text(TvIntervals.label(store.interval), color = Color.White, fontSize = 16.sp)
+                }
+                IconButton(onClick = { showType = true }) {
+                    Icon(Icons.Outlined.BarChart, "Typ wykresu", tint = if (store.chartType != ChartType.CANDLES) BLUE else Color.White)
+                }
+                IconButton(onClick = { showIndicators = true }) {
+                    Icon(Icons.Outlined.Timeline, "Wskaźniki", tint = if (store.indicators != IndicatorSet()) BLUE else Color.White)
+                }
+                IconButton(onClick = { showDraw = true }) {
+                    Icon(Icons.Outlined.Edit, "Rysuj", tint = if (drawings.isNotEmpty() || store.tool != DrawTool.NONE) BLUE else Color.White)
+                }
+                IconButton(onClick = { showInfo = true }) { Icon(Icons.Outlined.Info, "Info", tint = MUTED) }
             }
-            TextButton(onClick = { showInterval = true }) {
-                Text(TvIntervals.label(store.interval), color = Color.White, fontSize = 16.sp)
-            }
-            IconButton(onClick = { showIndicators = true }) {
-                Icon(Icons.Outlined.Timeline, "Wskaźniki", tint = if (store.indicators != IndicatorSet()) BLUE else Color.White)
-            }
-            IconButton(onClick = { showDraw = true }) {
-                Icon(Icons.Outlined.Edit, "Rysuj", tint = if (drawings.isNotEmpty() || store.tool != DrawTool.NONE) BLUE else Color.White)
-            }
-            Spacer(Modifier.weight(1f))
-            IconButton(onClick = { showInfo = true }) { Icon(Icons.Outlined.Info, "Info", tint = MUTED) }
             Button(
                 onClick = onTrade,
                 colors = ButtonDefaults.buttonColors(containerColor = BLUE),
@@ -162,6 +173,9 @@ fun TerminalChartTab(store: Store, onTrade: () -> Unit) {
             onRange = { c -> rangeId++; rangeReq = RangeReq(c, rangeId); showInterval = false },
             onDismiss = { showInterval = false }
         )
+    }
+    if (showType) {
+        ChartTypeSheet(store.chartType, onPick = { store.chartType = it; showType = false }, onDismiss = { showType = false })
     }
     if (showIndicators) {
         IndicatorSheet(store.indicators, onChange = { store.indicators = it }, onDismiss = { showIndicators = false })

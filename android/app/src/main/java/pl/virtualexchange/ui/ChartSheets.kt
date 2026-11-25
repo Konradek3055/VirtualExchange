@@ -94,3 +94,29 @@ fun DrawSheet(
         }
     }
 }
+
+
+/** Arkusz wyboru typu wykresu. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun ChartTypeSheet(selected: ChartType, onPick: (ChartType) -> Unit, onDismiss: () -> Unit) {
+    ModalBottomSheet(onDismissRequest = onDismiss, containerColor = SHEET) {
+        Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(bottom = 28.dp)) {
+            Text("Typ wykresu", color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.SemiBold)
+            Spacer(Modifier.height(8.dp))
+            ChartType.values().forEach { t ->
+                Row(
+                    Modifier.fillMaxWidth().clickable { onPick(t) }.padding(vertical = 14.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text(t.label, color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                        Text(t.hint, color = SUB, fontSize = 12.sp)
+                    }
+                    if (t == selected) Text("✓", color = Color(0xFF2962FF), fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                }
+                HorizontalDivider(color = DIV)
+            }
+        }
+    }
+}

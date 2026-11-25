@@ -26,6 +26,9 @@ class Store {
     var interval by mutableStateOf("1m")
     var indicators by mutableStateOf(IndicatorSet())
     var tool by mutableStateOf(DrawTool.NONE)
+    var chartType by mutableStateOf(ChartType.CANDLES)
+    val spark = mutableStateMapOf<String, List<Double>>()
+    private var sparkAt = 0L
     val drawings = mutableStateMapOf<String, List<Drawing>>()
     var status by mutableStateOf("Łączenie…")
     var accountError by mutableStateOf("")
@@ -40,11 +43,33 @@ class Store {
         bids = parseLevels(book.optJSONArray("bids"))
         asks = parseLevels(book.optJSONArray("asks"))
         trades = Api.getArray("trades/$symbol").objects().take(30)
-        candles = parseCandles(Api.getArray("candles/$symbol?limit=300&interval=$interval"))
+        val iv = interval
+        candles = fillCandles(
+            parseCandles(Api.getArray("candles/$symbol?limit=300&interval=$iv")),
+            TvIntervals.seconds(iv),
+        )
         stats = try {
             Api.getObject("stats")
         } catch (_: Exception) {
             JSONObject()
+        }
+    }
+
+    /** Mini-wykresy na liście rynku. */
+    private suspend fun refreshSparks() {
+        val now = System.currentTimeMillis()
+        if (spark.isNotEmpty() && now - sparkAt < 30_000L) return
+        sparkAt = now
+        for (a in assets.take(16)) {
+            val symbol = a.optString("symbol")
+            try {
+                val list = fillCandles(
+                    parseCandles(Api.getArray("candles/$symbol?limit=60&interval=5m")), 300
+                )
+                if (list.size >= 2) spark[symbol] = list.takeLast(48).map { it.close }
+            } catch (_: Exception) {
+                // Miniwykres jest opcjonalny.
+            }
         }
     }
 
@@ -65,6 +90,7 @@ class Store {
                 selected = assets.first().optString("symbol")
             }
             refreshMarket()
+            try { refreshSparks() } catch (_: Exception) {}
             status = if (Api.offline) "OFFLINE · symulacja z botami" else "ONLINE · wspólny rynek"
         } catch (error: Exception) {
             status = "BŁĄD RYNKU: ${error.message}"

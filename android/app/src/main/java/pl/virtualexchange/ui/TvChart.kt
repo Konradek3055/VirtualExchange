@@ -157,6 +157,7 @@ private val RSI_C = Color(0xFF7E57C2)
 private val MACD_C = Color(0xFF2962FF)
 private val SIG_C = Color(0xFFFF6D00)
 private val DRAW_C = Color(0xFFFFC107)
+private val LINE_C = Color(0xFF2962FF)
 
 /** Gotowe serie wskaźników dla załadowanych świec (liczone raz na zmianę danych). */
 private class Series(c: List<Candle>) {
@@ -262,6 +263,7 @@ fun TvChart(
     drawings: List<Drawing>,
     onDrawingsChange: (List<Drawing>) -> Unit,
     onToolDone: () -> Unit,
+    chartType: ChartType = ChartType.CANDLES,
     modifier: Modifier = Modifier,
 ) {
     var visible by remember { mutableFloatStateOf(70f) }
@@ -274,11 +276,12 @@ fun TvChart(
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
     val density = LocalDensity.current
     val axisPx = with(density) { 62.dp.toPx() }
-    val topPad = with(density) { 66.dp.toPx() }
+    val topPad = with(density) { 84.dp.toPx() }
     val timeH = with(density) { 26.dp.toPx() }
     val measurer = rememberTextMeasurer()
     val n = candles.size
     val series = remember(candles) { Series(candles) }
+    val shown = remember(candles, chartType) { if (chartType == ChartType.HEIKIN) heikinAshi(candles) else candles }
 
     LaunchedEffect(Unit) {
         while (true) {
@@ -317,7 +320,7 @@ fun TvChart(
                 if (v != null) { lo = min(lo, v); hi = max(hi, v) }
             }
             for (i in i0 until i1) {
-                take(candles[i].low); take(candles[i].high)
+                take(shown[i].low); take(shown[i].high)
                 if (indicators.sma) take(series.sma[i])
                 if (indicators.ema) take(series.ema[i])
                 if (indicators.bb) { take(series.bb.second[i]); take(series.bb.third[i]) }
@@ -492,18 +495,59 @@ fun TvChart(
                     }
 
                     for (i in g.i0 until g.i1) {
-                        val c = candles[i]
+                        val c = shown[i]
                         val col = if (c.close >= c.open) UP else DOWN
                         val x = cx(i)
                         if (indicators.volume) {
-                            val vh = if (maxVol > 0) (c.volume / maxVol * volH * 0.95).toFloat() else 0f
+                            val vh = if (maxVol > 0) (candles[i].volume / maxVol * volH * 0.95).toFloat() else 0f
                             drawRect(col.copy(alpha = 0.4f), Offset(x - cw * 0.45f, mainBottom - vh), Size(cw * 0.9f, vh))
                         }
-                        val wick = (cw * 0.07f).coerceIn(1f, 2.5f)
-                        drawLine(col, Offset(x, g.y(c.high)), Offset(x, g.y(c.low)), wick)
-                        val top = g.y(max(c.open, c.close))
-                        val bot = g.y(min(c.open, c.close))
-                        drawRect(col, Offset(x - cw * 0.36f, top), Size(cw * 0.72f, max(bot - top, 1.5f)))
+                        when (chartType) {
+                            ChartType.CANDLES, ChartType.HEIKIN -> {
+                                val wick = (cw * 0.07f).coerceIn(1f, 2.5f)
+                                drawLine(col, Offset(x, g.y(c.high)), Offset(x, g.y(c.low)), wick)
+                                val top = g.y(max(c.open, c.close))
+                                val bot = g.y(min(c.open, c.close))
+                                drawRect(col, Offset(x - cw * 0.36f, top), Size(cw * 0.72f, max(bot - top, 1.5f)))
+                            }
+                            ChartType.BARS -> {
+                                val w = (cw * 0.08f).coerceIn(1.5f, 3f)
+                                val tick = cw * 0.38f
+                                drawLine(col, Offset(x, g.y(c.high)), Offset(x, g.y(c.low)), w)
+                                drawLine(col, Offset(x - tick, g.y(c.open)), Offset(x, g.y(c.open)), w)
+                                drawLine(col, Offset(x, g.y(c.close)), Offset(x + tick, g.y(c.close)), w)
+                            }
+                            ChartType.LINE, ChartType.AREA -> {}
+                        }
+                    }
+
+                    if (chartType == ChartType.LINE || chartType == ChartType.AREA) {
+                        val line = Path()
+                        val fill = Path()
+                        var started = false
+                        var lastX = 0f
+                        for (i in g.i0 until g.i1) {
+                            val x = cx(i)
+                            val y = g.y(candles[i].close)
+                            if (!started) {
+                                line.moveTo(x, y)
+                                fill.moveTo(x, g.priceBottom)
+                                fill.lineTo(x, y)
+                                started = true
+                            } else {
+                                line.lineTo(x, y)
+                                fill.lineTo(x, y)
+                            }
+                            lastX = x
+                        }
+                        if (started) {
+                            if (chartType == ChartType.AREA) {
+                                fill.lineTo(lastX, g.priceBottom)
+                                fill.close()
+                                drawPath(fill, LINE_C.copy(alpha = 0.18f))
+                            }
+                            drawPath(line, LINE_C, style = Stroke(2.5f))
+                        }
                     }
 
                     if (indicators.sma) seriesLine(series.sma, g.i0, g.i1, SMA_C, 2f, ::cx, g::y)
@@ -608,11 +652,26 @@ fun TvChart(
                 Text(name, color = AXIS_TXT, fontSize = 13.sp, maxLines = 1)
             }
             Text(headerText, color = headerColor, fontSize = 13.sp)
+            if (hover == null && last != null) {
+                Text(
+                    "O ${fmtPx(last.open)}  H ${fmtPx(last.high)}  L ${fmtPx(last.low)}  C ${fmtPx(last.close)}",
+                    color = headerColor, fontSize = 11.sp, maxLines = 1,
+                )
+            }
             if (legend.isNotEmpty()) {
                 Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     legend.forEach { (text, color) -> Text(text, color = color, fontSize = 10.sp, maxLines = 1) }
                 }
             }
+        }
+
+        if (shiftC > 0.5f && n > 0) {
+            Box(
+                Modifier.align(Alignment.BottomEnd).padding(end = 72.dp, bottom = 40.dp).size(36.dp)
+                    .clip(RoundedCornerShape(8.dp)).background(Color(0xFF2A2A2A))
+                    .clickable { shift = 0f },
+                contentAlignment = Alignment.Center,
+            ) { Text("»", color = Color.White, fontSize = 20.sp) }
         }
 
         if (tool != DrawTool.NONE) {
