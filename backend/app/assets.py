@@ -31,6 +31,7 @@ def create_user_asset(account_id, data):
                 VALUES(?,?,?,?,?,?)
             """, (data.symbol, data.name, "0", data.description, account_id, str(data.total_supply)))
             set_balance(db, account_id, data.symbol, data.total_supply, 0)
+            db.execute("INSERT OR IGNORE INTO company_development(symbol,owner_id) VALUES(?,?)", (data.symbol, account_id))
 
             return {"symbol": data.symbol, "name": data.name, "description": data.description,
                     "total_supply": str(data.total_supply), "creator_id": account_id,

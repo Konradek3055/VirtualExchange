@@ -198,7 +198,13 @@ def seed():
 
         for symbol,name,price in [
             ("BTC","Bitcoin","65000"),("ETH","Ethereum","3200"),
-            ("NVDA","NVIDIA Demo","140"),("AAPL","Apple Demo","230")
+            ("NVDA","NVIDIA","140"),("AAPL","Apple","230"),
+            ("MSFT","Microsoft","425"),("GOOGL","Alphabet","175"),
+            ("AMZN","Amazon","185"),("META","Meta Platforms","520"),
+            ("TSLA","Tesla","250"),("AMD","Advanced Micro Devices","160"),
+            ("INTC","Intel","30"),("JPM","JPMorgan Chase","225"),
+            ("KO","Coca-Cola","63"),("DIS","Disney","105"),
+            ("NFLX","Netflix","900"),("ORCL","Oracle","170")
         ]:
             db.execute(
                 "INSERT OR IGNORE INTO assets(symbol,name,last_price) VALUES(?,?,?)",
@@ -206,7 +212,11 @@ def seed():
             )
 
         for symbol,amount in [
-            ("USD","100000"),("BTC","2"),("ETH","20"),("NVDA","1000"),("AAPL","1000")
+            ("USD","100000"),("BTC","2"),("ETH","20"),
+            ("NVDA","1000"),("AAPL","1000"),("MSFT","1000"),("GOOGL","1000"),
+            ("AMZN","1000"),("META","1000"),("TSLA","1000"),("AMD","1000"),
+            ("INTC","1000"),("JPM","1000"),("KO","1000"),("DIS","1000"),
+            ("NFLX","1000"),("ORCL","1000")
         ]:
             av,locked = get_balance(db,account,symbol)
             if av == 0 and locked == 0:

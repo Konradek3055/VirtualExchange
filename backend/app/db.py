@@ -71,6 +71,15 @@ def init_db():
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
             PRIMARY KEY(symbol,account_id)
         );
+        CREATE TABLE IF NOT EXISTS company_development(
+            symbol TEXT PRIMARY KEY REFERENCES assets(symbol) ON DELETE CASCADE,
+            owner_id INTEGER NOT NULL REFERENCES accounts(id),
+            office_level INTEGER NOT NULL DEFAULT 0,
+            research_level INTEGER NOT NULL DEFAULT 0,
+            marketing_level INTEGER NOT NULL DEFAULT 0,
+            invested TEXT NOT NULL DEFAULT '0',
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
         """)
         cols = {r[1] for r in db.execute("PRAGMA table_info(orders)")}
         if "price_i" not in cols:   # migracja starszych baz: cena jako liczba całkowita (cena*1e8)

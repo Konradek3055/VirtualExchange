@@ -188,7 +188,7 @@ object Api {
         }
 
     suspend fun getArray(path: String, auth: Boolean = false) = JSONArray(call("GET", path, null, auth))
-    suspend fun getObject(path: String) = JSONObject(call("GET", path, null, false))
+    suspend fun getObject(path: String, auth: Boolean = false) = JSONObject(call("GET", path, null, auth))
     suspend fun post(path: String, data: JSONObject, auth: Boolean = true) =
         JSONObject(call("POST", path, data, auth))
 

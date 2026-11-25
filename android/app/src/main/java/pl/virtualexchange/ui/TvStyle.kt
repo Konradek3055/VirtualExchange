@@ -12,6 +12,8 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.AccountBalanceWallet
 import androidx.compose.material.icons.outlined.FormatListBulleted
+import androidx.compose.material.icons.outlined.Home
+import androidx.compose.material.icons.outlined.Business
 import androidx.compose.material.icons.outlined.Menu
 import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.ShowChart
@@ -67,10 +69,10 @@ fun fmtPct(v: Double): String =
 /** Zmiana ceny bez znaku; zero to "0,00" (a nie kreska). */
 fun fmtDelta(v: Double): String = if (v == 0.0) "0,00" else fmtPx(abs(v))
 
-fun category(symbol: String): String = when (symbol) {
-    "BTC", "ETH" -> "Krypto"
-    "NVDA", "AAPL" -> "Akcje"
-    else -> "Społeczność"
+fun category(symbol: String, community: Boolean = false): String = when {
+    community -> "Spółki"
+    symbol == "BTC" || symbol == "ETH" -> "Krypto"
+    else -> "Akcje"
 }
 
 private val BadgePalette = listOf(
@@ -147,7 +149,7 @@ fun TvInput(
 }
 
 @Composable
-fun TvTopBar(status: String, onRefresh: () -> Unit) {
+fun TvTopBar(status: String, onRefresh: () -> Unit, onMenu: () -> Unit = {}) {
     val label = when {
         status.startsWith("ONLINE") -> "ONLINE"
         status.startsWith("OFFLINE") -> "SYMULACJA"
@@ -177,6 +179,7 @@ fun TvTopBar(status: String, onRefresh: () -> Unit) {
             Box(Modifier.size(7.dp).clip(CircleShape).background(dot))
             Text(label, color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(start = 6.dp))
         }
+        IconButton(onClick = onMenu) { Icon(Icons.Outlined.Menu, contentDescription = "Menu", tint = Color.White) }
         IconButton(onClick = onRefresh) { Icon(Icons.Outlined.Refresh, contentDescription = "Odśwież", tint = Color.White) }
     }
 }
@@ -185,11 +188,12 @@ fun TvTopBar(status: String, onRefresh: () -> Unit) {
 @Composable
 fun TvBottomBar(tab: Int, onTab: (Int) -> Unit) {
     val items = listOf(
+        "Start" to Icons.Outlined.Home,
         "Rynek" to Icons.Outlined.FormatListBulleted,
         "Wykres" to Icons.Outlined.ShowChart,
         "Handel" to Icons.Outlined.SwapHoriz,
         "Portfel" to Icons.Outlined.AccountBalanceWallet,
-        "Menu" to Icons.Outlined.Menu,
+        "Spółki" to Icons.Outlined.Business,
     )
     Column(Modifier.fillMaxWidth().background(Color(0xFF0D1522)).navigationBarsPadding()) {
         HorizontalDivider(color = Tv.Line)

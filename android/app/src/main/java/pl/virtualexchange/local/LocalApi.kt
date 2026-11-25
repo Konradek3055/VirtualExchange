@@ -45,6 +45,19 @@ object LocalApi {
         val parts = route.split("/")
         try {
             return when {
+                method == "GET" && route == "me" -> JSONObject()
+                    .put("id", m.playerId)
+                    .put("username", e.accounts[m.playerId]?.name ?: "Gracz")
+                    .toString()
+
+                method == "GET" && parts[0] == "companies" && parts.size == 3 && parts[2] == "development" ->
+                    m.getCompanyDevelopment(parts[1]).toString()
+
+                method == "POST" && parts[0] == "companies" && parts.size == 3 && parts[2] == "upgrade" -> {
+                    val b = body ?: bad("Brak danych")
+                    m.upgradeCompany(parts[1], b.optString("branch")).toString()
+                }
+
                 method == "GET" && route == "stats" -> {
                     val cutoff = System.currentTimeMillis() - 86_400_000L
                     val out = JSONObject()
@@ -170,7 +183,7 @@ object LocalApi {
 
                 method == "POST" && route == "assets" -> {
                     val b = body ?: bad("Brak danych")
-                    assetJson(e.createAsset(m.playerId, b.optString("symbol"), b.optString("name"),
+                    assetJson(e.createUserAsset(m.playerId, b.optString("symbol"), b.optString("name"),
                         b.optString("description"), dec(b.optString("total_supply"), "Podaż"))).toString()
                 }
 

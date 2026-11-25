@@ -85,14 +85,14 @@ fun TvMarketTab(store: Store, onOpen: () -> Unit) {
     var query by remember { mutableStateOf("") }
     var filter by remember { mutableIntStateOf(0) }
     val collapsed = remember { mutableStateMapOf<String, Boolean>() }
-    val filters = listOf("Wszystko", "Krypto", "Akcje", "Społeczność")
+    val filters = listOf("Wszystko", "Akcje", "Krypto", "Spółki")
 
     val assets = store.assets.filter { a ->
         val symbol = a.optString("symbol")
-        (filter == 0 || category(symbol) == filters[filter]) &&
+        (filter == 0 || category(symbol, !a.isNull("creator_id")) == filters[filter]) &&
             (query.isBlank() || symbol.contains(query.trim(), true) || a.optString("name").contains(query.trim(), true))
     }
-    val groups = filters.drop(1).map { group -> group to assets.filter { category(it.optString("symbol")) == group } }
+    val groups = filters.drop(1).map { group -> group to assets.filter { category(it.optString("symbol"), !it.isNull("creator_id")) == group } }
         .filter { it.second.isNotEmpty() }
 
     LazyColumn(
@@ -104,7 +104,7 @@ fun TvMarketTab(store: Store, onOpen: () -> Unit) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
                         Text("RYNEK", color = Tv.Blue, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.4.sp)
-                        Text("Lista obserwowanych", color = Color.White, fontSize = 23.sp, fontWeight = FontWeight.Bold)
+                        Text("Notowania i spółki", color = Color.White, fontSize = 23.sp, fontWeight = FontWeight.Bold)
                     }
                     Column(horizontalAlignment = Alignment.End) {
                         Text("${store.assets.size}", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
@@ -806,39 +806,6 @@ fun TvMenuTab(store: Store, scope: CoroutineScope) {
             }
         }
 
-        TvCard {
-            Text("Utwórz aktywo społeczności", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
-            Text(
-                "Podaż jest stała od startu, a cenę kształtują wyłącznie zlecenia użytkowników. Tryb online: opłata emisji 100 USD, limit 3 aktywa na gracza.",
-                color = Tv.Muted, fontSize = 13.sp, modifier = Modifier.padding(top = 4.dp, bottom = 10.dp),
-            )
-            TvInput("Symbol, np. NOVA", symbol, { symbol = it.uppercase() })
-            Spacer(Modifier.height(8.dp))
-            TvInput("Nazwa aktywa", name, { name = it })
-            Spacer(Modifier.height(8.dp))
-            TvInput("Opis", description, { description = it })
-            Spacer(Modifier.height(8.dp))
-            TvInput("Stała podaż", supply, { supply = it }, keyboard = KeyboardType.Decimal)
-            Button(
-                onClick = {
-                    scope.launch {
-                        try {
-                            val body = JSONObject().put("symbol", symbol.trim()).put("name", name.trim())
-                                .put("description", description.trim()).put("total_supply", supply.trim())
-                            Api.post("assets", body)
-                            store.message = "Utworzono ${symbol.trim()}"
-                            store.refreshAll()
-                        } catch (error: Exception) {
-                            store.message = error.message ?: "Nie udało się utworzyć aktywa"
-                        }
-                    }
-                },
-                modifier = Modifier.fillMaxWidth().padding(top = 12.dp).height(46.dp),
-                shape = RoundedCornerShape(10.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = Tv.Blue),
-            ) { Text("Utwórz aktywo", fontWeight = FontWeight.Bold) }
-            if (store.message.isNotEmpty()) Text(store.message, color = Tv.Muted, fontSize = 13.sp, modifier = Modifier.padding(top = 8.dp))
-        }
         Spacer(Modifier.height(16.dp))
     }
 }

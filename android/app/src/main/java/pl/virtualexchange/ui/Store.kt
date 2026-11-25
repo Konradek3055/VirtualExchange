@@ -31,6 +31,8 @@ class Store {
     private var sparkAt = 0L
     val drawings = mutableStateMapOf<String, List<Drawing>>()
     var status by mutableStateOf("Łączenie…")
+    var userId by mutableStateOf(-1)
+    var username by mutableStateOf("")
     var accountError by mutableStateOf("")
     var message by mutableStateOf("")
 
@@ -60,7 +62,7 @@ class Store {
         val now = System.currentTimeMillis()
         if (now - sparkAt < 30_000L) return
         sparkAt = now
-        for (a in assets.take(16)) {
+        for (a in assets.take(32)) {
             val symbol = a.optString("symbol")
             try {
                 val list = fillCandles(
@@ -75,6 +77,9 @@ class Store {
 
     suspend fun refreshAccount() {
         try {
+            val identity = Api.getObject("me", auth = true)
+            userId = identity.optInt("id", -1)
+            username = identity.optString("username", "")
             portfolio = Api.getArray("portfolio", true).objects()
             orders = Api.getArray("orders", true).objects()
             accountError = ""

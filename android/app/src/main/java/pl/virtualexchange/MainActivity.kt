@@ -38,6 +38,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import pl.virtualexchange.data.Api
 import pl.virtualexchange.ui.TerminalChartTab
+import pl.virtualexchange.ui.TvHomeTab
+import pl.virtualexchange.ui.TvCompanyTab
 import pl.virtualexchange.ui.TvBottomBar
 import pl.virtualexchange.ui.TvMarketTab
 import pl.virtualexchange.ui.TvMenuTab
@@ -82,15 +84,18 @@ fun ExchangeApp() {
 
     Scaffold(
         containerColor = Color.Black,
-        topBar = { if (tab != 1) TvTopBar(store.status) { scope.launch { store.refreshAll() } } },
+        topBar = { if (tab != 2) TvTopBar(store.status, onRefresh = { scope.launch { store.refreshAll() } }, onMenu = { tab = 6 }) },
         bottomBar = { TvBottomBar(tab) { tab = it } },
     ) { padding ->
         Box(Modifier.padding(padding)) {
             when (tab) {
-                0 -> TvMarketTab(store) { tab = 1 }
-                1 -> TerminalChartTab(store) { tab = 2 }
-                2 -> TvTradeTab(store, scope)
-                3 -> TvPortfolioTab(store, scope)
+                0 -> TvHomeTab(store, onMarket = { tab = 1 }, onChart = { tab = 2 },
+                    onTrade = { tab = 3 }, onPortfolio = { tab = 4 }, onCompanies = { tab = 5 })
+                1 -> TvMarketTab(store) { tab = 2 }
+                2 -> TerminalChartTab(store) { tab = 3 }
+                3 -> TvTradeTab(store, scope)
+                4 -> TvPortfolioTab(store, scope)
+                5 -> TvCompanyTab(store, scope)
                 else -> TvMenuTab(store, scope)
             }
         }

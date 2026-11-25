@@ -117,6 +117,29 @@ class LocalEngine(var clock: () -> Long = { System.currentTimeMillis() }) {
         asset
     }
 
+    /** Emisja spółki społeczności: ta sama opłata i limit co w backendzie online. */
+    fun createUserAsset(accountId: Int, symbol: String, name: String, description: String,
+                        supply: BigDecimal): Asset = synchronized(lock) {
+        val account = accounts[accountId] ?: throw EngineError("Konto nie istnieje")
+        val owned = assets.values.count { it.creatorId == accountId }
+        if (owned >= 3) throw EngineError("Limit 3 utworzonych spółek na gracza")
+        val fee = BigDecimal("100")
+        val cash = account.bal(USD)
+        if (cash.available < fee) throw EngineError("Opłata emisyjna wynosi 100 USD")
+        val asset = createAsset(accountId, symbol, name, description, supply)
+        spendUsd(accountId, fee)
+        asset
+    }
+
+    fun spendUsd(accountId: Int, amount: BigDecimal) = synchronized(lock) {
+        if (amount.signum() <= 0) throw EngineError("Nieprawidłowa kwota inwestycji")
+        val account = accounts[accountId] ?: throw EngineError("Konto nie istnieje")
+        val cash = account.bal(USD)
+        if (cash.available < amount) throw EngineError("Za mało USD na inwestycję")
+        cash.available = cash.available.subtract(amount)
+        issued[USD] = (issued[USD] ?: BigDecimal.ZERO).subtract(amount)
+    }
+
     private fun checkDec(v: BigDecimal, field: String, max: BigDecimal) {
         if (v.signum() <= 0 || v > max) throw EngineError("$field: niepoprawna wartość")
         if (v.stripTrailingZeros().scale() > DP) throw EngineError("$field: maksymalnie $DP miejsc po przecinku")

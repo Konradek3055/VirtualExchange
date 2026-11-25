@@ -5,6 +5,7 @@ from .db import init_db,connect
 from .schemas import CreateAccount,OrderIn,AssetCreate
 from .engine import place_order,cancel_order,seed
 from .assets import asset_info, create_user_asset, report_asset
+from .companies import get_company_development, upgrade_company
 import calendar
 import secrets
 import time
@@ -65,7 +66,7 @@ def portfolio(x_api_key:str|None=Header(default=None)):
 def assets():
     with connect() as db:
         rows = db.execute("""
-            SELECT symbol,name,last_price,description,total_supply,created_at
+            SELECT symbol,name,last_price,description,total_supply,created_at,creator_id
             FROM assets ORDER BY symbol
         """).fetchall()
     return [dict(row) for row in rows]
@@ -160,6 +161,16 @@ def report(symbol:str,x_api_key:str|None=Header(default=None)):
 def add_asset(body:AssetCreate,x_api_key:str|None=Header(default=None)):
     account = account_from_key(x_api_key)
     return create_user_asset(account["id"],body)
+
+@app.get("/companies/{symbol}/development")
+def company_development(symbol:str,x_api_key:str|None=Header(default=None)):
+    account = account_from_key(x_api_key)
+    return get_company_development(account["id"],symbol.upper())
+
+@app.post("/companies/{symbol}/upgrade")
+def company_upgrade(symbol:str,body:dict,x_api_key:str|None=Header(default=None)):
+    account = account_from_key(x_api_key)
+    return upgrade_company(account["id"],symbol.upper(),str(body.get("branch", "")))
 
 async def notify(symbol):
     for ws in list(sockets.get(symbol,set())):

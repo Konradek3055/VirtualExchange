@@ -297,8 +297,9 @@ fun TvChart(
     }
     LaunchedEffect(intervalSec) { shift = 0f }
 
-    val vis = visible.roundToInt().coerceAtLeast(5)
-    val shiftC = shift.coerceIn(-vis * 0.35f, max(0f, n - 5f))
+    val requestedVis = visible.roundToInt().coerceAtLeast(5)
+    val vis = if (n > 0) requestedVis.coerceAtMost(n).coerceAtLeast(1) else requestedVis
+    val shiftC = if (n <= vis) 0f else shift.coerceIn(-vis * 0.35f, max(0f, n - 5f))
     val plotW = (widthPx - axisPx).coerceAtLeast(1f)
     val cw = plotW / vis
     val startIdx = n - shiftC - vis
