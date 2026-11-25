@@ -51,6 +51,7 @@ wyłącznie dla łatwego testowania lokalnego.
   Zlecenia (anulowanie), Więcej (konto, serwer, nowe aktywo); odświeżanie przez WebSocket + zapasowo co 5 s,
 - tworzenie własnych aktywów (unikalny ticker, stała podaż, twórca nie ustawia ceny, opłata emisji 100 USD i limit 3 aktywów na gracza),
 - wykres w stylu TradingView (interwały 1m, 3m, 5m, 15m, 30m, 1h, 4h, 1D; sekundy i ticki niedostępne), panel informacji o aktywie, zgłaszanie podejrzanych aktywów (flaga po 3 zgłoszeniach),
+- wskaźniki (SMA, EMA, Bollinger, VWAP, RSI, MACD) i narzędzia rysowania (linia trendu/pozioma, prostokąt, Fibonacci),
 - przyciski 25/50/75/100% w formularzu zlecenia.
 
 Pełna lista wymagań i statusów: `docs/CHECKLISTA.md`.

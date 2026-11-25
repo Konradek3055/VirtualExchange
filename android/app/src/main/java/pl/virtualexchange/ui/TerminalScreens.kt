@@ -205,8 +205,11 @@ fun TerminalChartTab(store: Store, onTrade: () -> Unit) {
     var showInterval by remember { mutableStateOf(false) }
     var showInfo by remember { mutableStateOf(false) }
     var showPicker by remember { mutableStateOf(false) }
+    var showIndicators by remember { mutableStateOf(false) }
+    var showDraw by remember { mutableStateOf(false) }
     var rangeReq by remember { mutableStateOf<RangeReq?>(null) }
     var rangeId by remember { mutableIntStateOf(0) }
+    val drawings = store.drawings[store.selected] ?: emptyList()
     LaunchedEffect(store.interval, store.selected) {
         try { store.refreshMarket() } catch (_: Exception) {}
     }
@@ -216,7 +219,10 @@ fun TerminalChartTab(store: Store, onTrade: () -> Unit) {
     Column(Modifier.fillMaxSize().background(Color.Black)) {
         TvChart(
             store.candles, store.selected, asset?.optString("name").orEmpty(),
-            intervalSec, rangeReq, Modifier.weight(1f).fillMaxWidth()
+            intervalSec, rangeReq, store.indicators, store.tool, drawings,
+            onDrawingsChange = { list -> store.drawings[store.selected] = list },
+            onToolDone = { store.tool = DrawTool.NONE },
+            modifier = Modifier.weight(1f).fillMaxWidth()
         )
         Row(
             Modifier.fillMaxWidth().background(Color(0xFF0A0A0A)).padding(horizontal = 10.dp, vertical = 2.dp),
@@ -228,8 +234,14 @@ fun TerminalChartTab(store: Store, onTrade: () -> Unit) {
             TextButton(onClick = { showInterval = true }) {
                 Text(TvIntervals.label(store.interval), color = Color.White, fontSize = 16.sp)
             }
+            TextButton(onClick = { showIndicators = true }, contentPadding = PaddingValues(horizontal = 8.dp)) {
+                Text("ƒx", color = if (store.indicators != IndicatorSet()) BLUE else Color.White, fontSize = 17.sp, fontWeight = FontWeight.Bold)
+            }
+            TextButton(onClick = { showDraw = true }, contentPadding = PaddingValues(horizontal = 8.dp)) {
+                Text("✎", color = if (drawings.isNotEmpty() || store.tool != DrawTool.NONE) BLUE else Color.White, fontSize = 18.sp)
+            }
             Spacer(Modifier.weight(1f))
-            TextButton(onClick = { showInfo = true }) { Text("Info", color = MUTED) }
+            TextButton(onClick = { showInfo = true }, contentPadding = PaddingValues(horizontal = 8.dp)) { Text("Info", color = MUTED) }
             Button(onClick = onTrade, colors = ButtonDefaults.buttonColors(containerColor = BLUE)) { Text("Handel") }
         }
     }
@@ -241,6 +253,18 @@ fun TerminalChartTab(store: Store, onTrade: () -> Unit) {
             onInterval = { store.interval = it; showInterval = false },
             onRange = { c -> rangeId++; rangeReq = RangeReq(c, rangeId); showInterval = false },
             onDismiss = { showInterval = false }
+        )
+    }
+    if (showIndicators) {
+        IndicatorSheet(store.indicators, onChange = { store.indicators = it }, onDismiss = { showIndicators = false })
+    }
+    if (showDraw) {
+        DrawSheet(
+            count = drawings.size,
+            onPick = { store.tool = it; showDraw = false },
+            onUndo = { store.drawings[store.selected] = drawings.dropLast(1) },
+            onClear = { store.drawings[store.selected] = emptyList(); showDraw = false },
+            onDismiss = { showDraw = false }
         )
     }
     if (showPicker) {

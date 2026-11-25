@@ -1,6 +1,7 @@
 package pl.virtualexchange.ui
 
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import org.json.JSONObject
@@ -23,6 +24,9 @@ class Store {
     var candles by mutableStateOf(listOf<Candle>())
     var selected by mutableStateOf("BTC")
     var interval by mutableStateOf("1m")
+    var indicators by mutableStateOf(IndicatorSet())
+    var tool by mutableStateOf(DrawTool.NONE)
+    val drawings = mutableStateMapOf<String, List<Drawing>>()
     var status by mutableStateOf("Łączenie…")
     var accountError by mutableStateOf("")
     var message by mutableStateOf("")
