@@ -58,7 +58,7 @@ class Store {
     /** Mini-wykresy na liście rynku. */
     private suspend fun refreshSparks() {
         val now = System.currentTimeMillis()
-        if (spark.isNotEmpty() && now - sparkAt < 30_000L) return
+        if (now - sparkAt < 30_000L) return
         sparkAt = now
         for (a in assets.take(16)) {
             val symbol = a.optString("symbol")

@@ -266,7 +266,7 @@ fun TvChart(
     chartType: ChartType = ChartType.CANDLES,
     modifier: Modifier = Modifier,
 ) {
-    var visible by remember { mutableFloatStateOf(70f) }
+    var visible by remember { mutableFloatStateOf(48f) }
     var shift by remember { mutableFloatStateOf(0f) }
     var cross by remember { mutableStateOf<Offset?>(null) }
     var draftA by remember { mutableStateOf<Offset?>(null) }
@@ -308,7 +308,7 @@ fun TvChart(
     val paneH = if (paneCount > 0) max(0f, heightPx - topPad - timeH) * 0.2f else 0f
     val mainBottom = heightPx - timeH - paneH * paneCount
     val volH = if (indicators.volume) (mainBottom - topPad) * 0.15f else 0f
-    val priceBottom = mainBottom - volH * 0.6f
+    val priceBottom = mainBottom - volH
 
     val geom: Geom? = if (n == 0 || widthPx <= 0f || heightPx <= 0f || priceBottom <= topPad + 20f) null else {
         val i0 = floor(startIdx).toInt().coerceAtLeast(0)
