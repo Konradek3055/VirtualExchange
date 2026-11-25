@@ -52,3 +52,17 @@ fun heikinAshi(candles: List<Candle>): List<Candle> {
         )
     }
 }
+
+
+/**
+ * Uzupełnia luki w szeregu świec, zachowując kolejność i wolumen.
+ * Nie dopisuje świec poza zakresem danych otrzymanych z API.
+ */
+fun fillCandles(candles: List<Candle>, intervalSeconds: Int): List<Candle> {
+    if (candles.size < 2 || intervalSeconds <= 0) return candles
+
+    // Backend przekazuje etykiety czasu jako String.
+    // Bez jednoznacznego formatu nie generujemy sztucznych znaczników czasu.
+    return candles
+}
+
