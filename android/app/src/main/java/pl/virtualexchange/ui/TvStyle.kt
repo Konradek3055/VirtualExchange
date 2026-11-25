@@ -35,17 +35,18 @@ import androidx.compose.ui.unit.sp
 import java.util.Locale
 import kotlin.math.abs
 
-/** Wspólna paleta w stylu TradingView / Binance / OKX: czarne tło, szare karty, zieleń i czerwień z TradingView. */
+/** System wizualny VirtualExchange. Wykres TradingView zachowuje własne kolory i geometrię. */
 object Tv {
-    val Bg = Color(0xFF000000)
-    val Card = Color(0xFF1E1E1E)
-    val Chip = Color(0xFF2A2A2A)
-    val Line = Color(0xFF2A2E39)
-    val Muted = Color(0xFF9A9A9A)
-    val Up = Color(0xFF089981)
-    val Down = Color(0xFFF23645)
-    val Blue = Color(0xFF2962FF)
-    val Light = Color(0xFFF1F1F1)
+    // Własna identyfikacja VirtualExchange. Wykres TradingView zachowuje własną paletę.
+    val Bg = Color(0xFF0A0F18)
+    val Card = Color(0xFF121B2A)
+    val Chip = Color(0xFF1B293B)
+    val Line = Color(0xFF26364A)
+    val Muted = Color(0xFF91A2B8)
+    val Up = Color(0xFF19C99A)
+    val Down = Color(0xFFFF647C)
+    val Blue = Color(0xFF48B9FF)
+    val Light = Color(0xFFE5F5FF)
 }
 
 private val PL = Locale.forLanguageTag("pl-PL")
@@ -90,7 +91,7 @@ fun TvBadge(symbol: String, size: Dp = 44.dp) {
     }
 }
 
-/** Pigułka jak w TradingView: zaznaczona = jasna z czarnym tekstem. */
+/** Zakładka w stylu panelu VirtualExchange. */
 @Composable
 fun Pill(label: String, selected: Boolean, onClick: () -> Unit) {
     Box(
@@ -180,7 +181,7 @@ fun TvTopBar(status: String, onRefresh: () -> Unit) {
     }
 }
 
-/** Dolna nawigacja jak w TradingView: czarna, ikony liniowe, aktywna zakładka = jasny zaokrąglony kwadrat. */
+/** Dolna nawigacja VirtualExchange: ciemny panel i wyraźny akcent aktywnej sekcji. */
 @Composable
 fun TvBottomBar(tab: Int, onTab: (Int) -> Unit) {
     val items = listOf(
@@ -190,26 +191,39 @@ fun TvBottomBar(tab: Int, onTab: (Int) -> Unit) {
         "Portfel" to Icons.Outlined.AccountBalanceWallet,
         "Menu" to Icons.Outlined.Menu,
     )
-    Column(Modifier.fillMaxWidth().background(Tv.Bg).navigationBarsPadding()) {
+    Column(Modifier.fillMaxWidth().background(Color(0xFF0D1522)).navigationBarsPadding()) {
         HorizontalDivider(color = Tv.Line)
-        Row(Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 7.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
             items.forEachIndexed { i, (label, icon) ->
                 val sel = tab == i
                 Column(
-                    Modifier.weight(1f).clickable { onTab(i) },
+                    Modifier.weight(1f).clip(RoundedCornerShape(14.dp))
+                        .background(if (sel) Color(0xFF17334B) else Color.Transparent)
+                        .clickable { onTab(i) }.padding(vertical = 6.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
-                    Box(
-                        Modifier.width(46.dp).height(32.dp).clip(RoundedCornerShape(10.dp))
-                            .background(if (sel) Tv.Light else Color.Transparent),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Icon(icon, contentDescription = label, tint = if (sel) Color.Black else Color(0xFFB2B5BE), modifier = Modifier.size(24.dp))
+                    Box(Modifier.size(width = 42.dp, height = 27.dp), contentAlignment = Alignment.Center) {
+                        Icon(
+                            icon, contentDescription = label,
+                            tint = if (sel) Tv.Blue else Tv.Muted,
+                            modifier = Modifier.size(22.dp),
+                        )
                     }
                     Text(
-                        label, color = if (sel) Color.White else Color(0xFFB2B5BE),
-                        fontSize = 11.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 2.dp),
+                        label, color = if (sel) Color.White else Tv.Muted,
+                        fontSize = 10.sp,
+                        fontWeight = if (sel) FontWeight.Bold else FontWeight.Medium,
+                        modifier = Modifier.padding(top = 2.dp),
                     )
+                    if (sel) {
+                        Spacer(
+                            Modifier.padding(top = 3.dp).width(15.dp).height(2.dp)
+                                .clip(RoundedCornerShape(2.dp)).background(Tv.Blue)
+                        )
+                    }
                 }
             }
         }
