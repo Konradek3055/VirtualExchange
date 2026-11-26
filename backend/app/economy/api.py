@@ -7,7 +7,7 @@ from fastapi import APIRouter, Header, HTTPException, Query
 from pydantic import BaseModel
 
 from ..db import connect, transaction
-from . import store
+from . import accounting, player, store, world
 
 router = APIRouter(prefix="/economy", tags=["economy"])
 
@@ -16,8 +16,10 @@ def _require_account(key):
     if not key:
         raise HTTPException(401, "API key required")
     with connect() as db:
-        if db.execute("SELECT 1 FROM accounts WHERE api_key=?", (key,)).fetchone() is None:
+        row = db.execute("SELECT id FROM accounts WHERE api_key=?", (key,)).fetchone()
+        if row is None:
             raise HTTPException(401, "Invalid API key")
+    return row["id"]
 
 
 def _require_admin(key):
@@ -90,7 +92,7 @@ def economy_ticks(limit: int = Query(50, ge=1, le=200), x_api_key: str | None = 
 
 @router.post("/admin/bootstrap-demo", status_code=201)
 def admin_bootstrap(x_admin_key: str | None = Header(default=None)):
-    return _write(store.bootstrap_demo, x_admin_key)
+    return _write(world.bootstrap_demo, x_admin_key)
 
 
 @router.post("/admin/link-companies")
@@ -100,4 +102,136 @@ def admin_link(x_admin_key: str | None = Header(default=None)):
 
 @router.post("/admin/tick")
 def admin_tick(body: TickIn, x_admin_key: str | None = Header(default=None)):
-    return _write(store.run_persistent_tick, x_admin_key, body.tick, body.hours)
+    return _write(world.run_persistent_tick, x_admin_key, body.tick, body.hours)
+
+
+def _play(fn, key, *args):
+    account_id = _require_account(key)
+    try:
+        with transaction() as db:
+            return fn(db, account_id, *args)
+    except store.EconomyError as exc:
+        raise HTTPException(exc.status, str(exc))
+
+
+class FoundIn(BaseModel):
+    name: str
+    region: str
+    product: str
+
+
+class AmountIn(BaseModel):
+    amount: Decimal
+
+
+class MaterialsIn(BaseModel):
+    sku: str
+    quantity: Decimal
+    supplier_id: str | None = None
+
+
+class ProcurementIn(BaseModel):
+    sku: str
+    target: Decimal
+    supplier_id: str | None = None
+
+
+class StaffIn(BaseModel):
+    action: str
+    count: int
+
+
+class WageIn(BaseModel):
+    wage_per_hour: Decimal
+
+
+class PriceIn(BaseModel):
+    markup: Decimal
+
+
+class ActivateIn(BaseModel):
+    region: str
+    product: str
+    amount: Decimal
+
+
+@router.get("/regions")
+def economy_regions(x_api_key: str | None = Header(default=None)):
+    return _read(lambda db: [dict(r) for r in db.execute("SELECT * FROM econ_regions ORDER BY region")], x_api_key)
+
+
+@router.get("/entities")
+def economy_entities(x_api_key: str | None = Header(default=None)):
+    return _read(lambda db: [dict(r) for r in db.execute("SELECT * FROM econ_entities ORDER BY entity_id")], x_api_key)
+
+
+@router.get("/{kind}/{ident}/statements")
+def economy_statements(kind: str, ident: str, from_tick: int = Query(0, ge=0), to_tick: int | None = None,
+                       x_api_key: str | None = Header(default=None)):
+    if kind not in ("firms", "entities"):
+        raise HTTPException(404, "Unknown statement subject")
+    try:
+        return _read(accounting.statements, x_api_key, "firm" if kind == "firms" else "entity", ident,
+                     from_tick, to_tick)
+    except store.EconomyError as exc:
+        raise HTTPException(exc.status, str(exc))
+
+
+@router.get("/player/firms")
+def player_firms(x_api_key: str | None = Header(default=None)):
+    return _play(player.list_player_firms, x_api_key)
+
+
+@router.post("/player/firms", status_code=201)
+def player_found(body: FoundIn, x_api_key: str | None = Header(default=None)):
+    return _play(player.found_firm, x_api_key, body.name, body.region, body.product)
+
+
+@router.post("/player/firms/{firm_id}/deposit")
+def player_deposit(firm_id: str, body: AmountIn, x_api_key: str | None = Header(default=None)):
+    return _play(player.deposit, x_api_key, firm_id, body.amount)
+
+
+@router.post("/player/firms/{firm_id}/materials")
+def player_materials(firm_id: str, body: MaterialsIn, x_api_key: str | None = Header(default=None)):
+    return _play(player.buy_materials, x_api_key, firm_id, body.sku, body.quantity, body.supplier_id)
+
+
+@router.post("/player/firms/{firm_id}/procurement")
+def player_procurement(firm_id: str, body: ProcurementIn, x_api_key: str | None = Header(default=None)):
+    return _play(player.set_procurement, x_api_key, firm_id, body.sku, body.target, body.supplier_id)
+
+
+@router.post("/player/firms/{firm_id}/staff")
+def player_staff(firm_id: str, body: StaffIn, x_api_key: str | None = Header(default=None)):
+    return _play(player.staff, x_api_key, firm_id, body.action, body.count)
+
+
+@router.post("/player/firms/{firm_id}/wage")
+def player_wage(firm_id: str, body: WageIn, x_api_key: str | None = Header(default=None)):
+    return _play(player.set_wage, x_api_key, firm_id, body.wage_per_hour)
+
+
+@router.post("/player/firms/{firm_id}/price")
+def player_price(firm_id: str, body: PriceIn, x_api_key: str | None = Header(default=None)):
+    return _play(player.set_price, x_api_key, firm_id, body.markup)
+
+
+@router.post("/player/firms/{firm_id}/capex")
+def player_capex(firm_id: str, body: AmountIn, x_api_key: str | None = Header(default=None)):
+    return _play(player.capex, x_api_key, firm_id, body.amount)
+
+
+@router.post("/player/firms/{firm_id}/dividend")
+def player_dividend(firm_id: str, body: AmountIn, x_api_key: str | None = Header(default=None)):
+    return _play(player.pay_dividend, x_api_key, firm_id, body.amount)
+
+
+@router.post("/player/withdraw")
+def player_withdraw(body: AmountIn, x_api_key: str | None = Header(default=None)):
+    return _play(player.withdraw, x_api_key, body.amount)
+
+
+@router.post("/player/companies/{symbol}/activate")
+def player_activate(symbol: str, body: ActivateIn, x_api_key: str | None = Header(default=None)):
+    return _play(player.activate_company, x_api_key, symbol, body.region, body.product, body.amount)

@@ -35,12 +35,29 @@ existing company-development subsystem.
 - Existing companies are mirrored as zero-cash `shadow` firms (`LEGACY-<SYMBOL>`); the link only
   reads `company_development` and moves no money.
 
-## Deliberate limitations
+## Circulation, accounting and player operations (v3)
 
-- The economy is an isolated sandbox: its cash accounts are NOT user `balances`; no bridge to
-  production accounts, portfolios or `companies.py` settlements exists yet.
-- Money paid to suppliers/energy accrues in `market:*` accounts and is not yet recirculated
-  (no supplier owners, banks, taxes or dividends), so long runs drain household/firm cash.
-- Shadow firms stay idle (no cash, no households in region `LEGACY`).
-- Single region/household group in the demo world; no FX, banks, government, events or agents.
-- Android is not yet connected to these endpoints.
+- `circulation.py`: suppliers (`econ_entities`: materials/energy/capital) are businesses with owner,
+  staff, revenue, wages, corporate tax and dividends. Households pay income tax; a regional
+  government (`econ_regions`) returns 90% of its cash to households each tick as public transfers.
+  Every flow is a ledger transfer, so supply is constant except explicit issuance/bridge.
+- `accounting.py`: balance sheet, income statement and cash-flow statement derived only from the
+  journal and account balances. Equity is built from P&L + contributions, so `balanced` is a real
+  cross-check. Receivables/trade payables are always 0 (all trade is cash); taxes payable is real.
+- `player.py` + `/economy/player/*`: found firm, deposit/withdraw (wallet bridge), buy materials,
+  auto-procurement, hire/fire, wage, price markup, capex (depreciated 1/500 per tick), dividends,
+  activation of a legacy company (cash is moved out of `company_development`, not copied).
+- Wallet bridge is OFF unless `VE_ECONOMY_BRIDGE_ENABLED=1`. Bridged money is explicit issuance /
+  redemption, logged in `econ_bridge`; economy supply == sandbox issuance + net bridge.
+- Pre-v2 `market:*` accounts are adopted as `LEGACY-ENERGY` / `LEGACY-MATERIALS` suppliers.
+- Migration v2 is additive (new tables, nullable/default columns, indexes) with an automatic backup.
+
+## Known limitations
+
+- Demo money concentrates in owners (dividends) and workers' cash trends down: no consumer credit,
+  wage growth, investment demand or owner spending beyond the savings rate yet.
+- Wages unpaid for lack of cash are not accrued; no loss carry-forward; no bankruptcy logic.
+- One region in practice (SIM); no FX, banks, agents, events. Legacy `company_development` still
+  creates its own cash in the old system; cash activated from it is imported as-is.
+- Hiring checks region workforce but does not move `employed` between groups.
+- Android is not connected.

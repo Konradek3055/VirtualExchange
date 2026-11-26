@@ -55,7 +55,28 @@ CREATE TABLE IF NOT EXISTS econ_ticks(
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
 CREATE INDEX IF NOT EXISTS idx_econ_journal_tick ON econ_journal(tick, entry_id);
 """
-MIGRATIONS = [(1, "economy_core_tables", _V1)]
+
+_V2 = """
+CREATE TABLE IF NOT EXISTS econ_regions(
+    region TEXT PRIMARY KEY, currency TEXT NOT NULL DEFAULT 'USD', income_tax_rate TEXT NOT NULL,
+    corporate_tax_rate TEXT NOT NULL, gov_spend_ratio TEXT NOT NULL, gov_cash_account TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS econ_entities(
+    entity_id TEXT PRIMARY KEY, kind TEXT NOT NULL, region TEXT NOT NULL, cash_account TEXT NOT NULL,
+    owner_group TEXT, employees INTEGER NOT NULL DEFAULT 0, wage_per_hour TEXT NOT NULL DEFAULT '10',
+    sells TEXT NOT NULL DEFAULT '{}', dividend_payout TEXT NOT NULL DEFAULT '0.5');
+CREATE TABLE IF NOT EXISTS econ_bridge(
+    id INTEGER PRIMARY KEY AUTOINCREMENT, account_id INTEGER NOT NULL, kind TEXT NOT NULL,
+    ref TEXT, amount TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
+ALTER TABLE econ_firms ADD COLUMN owner_group TEXT;
+ALTER TABLE econ_firms ADD COLUMN owner_account_id INTEGER;
+ALTER TABLE econ_firms ADD COLUMN display_name TEXT;
+ALTER TABLE econ_firms ADD COLUMN dividend_payout TEXT NOT NULL DEFAULT '0.5';
+ALTER TABLE econ_firms ADD COLUMN cash_reserve TEXT NOT NULL DEFAULT '0';
+CREATE INDEX IF NOT EXISTS idx_econ_journal_debit ON econ_journal(debit_account, entry_id);
+CREATE INDEX IF NOT EXISTS idx_econ_journal_credit ON econ_journal(credit_account, entry_id);
+CREATE INDEX IF NOT EXISTS idx_econ_firms_owner ON econ_firms(owner_account_id);
+"""
+MIGRATIONS = [(1, "economy_core_tables", _V1), (2, "economy_circulation", _V2)]
 
 
 class EconomyError(Exception):
@@ -64,6 +85,18 @@ class EconomyError(Exception):
 
 class TickConflict(EconomyError):
     status = 409
+
+
+class NotFound(EconomyError):
+    status = 404
+
+
+class Forbidden(EconomyError):
+    status = 403
+
+
+class Disabled(EconomyError):
+    status = 503
 
 
 class InvariantViolation(EconomyError):
@@ -165,9 +198,11 @@ def load_households(db) -> List[HouseholdGroup]:
     ) for r in db.execute("SELECT * FROM econ_households ORDER BY group_id")]
 
 
-def load_firms(db) -> Tuple[List[FirmProductionState], Dict[str, dict]]:
+def load_firms(db, only: Optional[str] = None) -> Tuple[List[FirmProductionState], Dict[str, dict]]:
     firms, meta = [], {}
-    for r in db.execute("SELECT * FROM econ_firms ORDER BY firm_id"):
+    q, args = (("SELECT * FROM econ_firms WHERE firm_id=?", (only,)) if only
+               else ("SELECT * FROM econ_firms ORDER BY firm_id", ()))
+    for r in db.execute(q, args):
         fid = r["firm_id"]
         f = FirmProductionState(
             firm_id=fid, region=r["region"], cash_account=r["cash_account"], employees=r["employees"],
@@ -189,7 +224,9 @@ def load_firms(db) -> Tuple[List[FirmProductionState], Dict[str, dict]]:
                 f.material_supplier_cash_accounts[m["material_sku"]] = m["supplier_cash_account"]
         firms.append(f)
         meta[fid] = {"mode": r["mode"], "linked_symbol": r["linked_symbol"],
-                     "procurement": json.loads(r["procurement"])}
+                     "procurement": json.loads(r["procurement"]), "owner_group": r["owner_group"],
+                     "owner_account_id": r["owner_account_id"], "display_name": r["display_name"],
+                     "dividend_payout": D(r["dividend_payout"]), "cash_reserve": D(r["cash_reserve"])}
     return firms, meta
 
 
@@ -206,13 +243,20 @@ def save_firm_state(db, firm: FirmProductionState) -> None:
 
 
 def insert_firm(db, firm: FirmProductionState, procurement: Optional[dict] = None,
-                mode: str = "sandbox", linked_symbol: Optional[str] = None) -> None:
-    db.execute("INSERT INTO econ_firms VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)", (
+                mode: str = "sandbox", linked_symbol: Optional[str] = None,
+                owner_group: Optional[str] = None, owner_account_id: Optional[int] = None,
+                display_name: Optional[str] = None, dividend_payout: str = "0.5",
+                cash_reserve: str = "0") -> None:
+    db.execute("INSERT INTO econ_firms(firm_id,region,cash_account,employees,wage_per_hour,productivity,"
+               "capacity_per_hour,energy_cost_per_unit,energy_supplier_cash_account,sales_markup,payroll_shares,"
+               "procurement,mode,linked_symbol,owner_group,owner_account_id,display_name,dividend_payout,cash_reserve)"
+               " VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", (
         firm.firm_id, firm.region, firm.cash_account, firm.employees, str(firm.wage_per_hour),
         str(firm.productivity), str(firm.capacity_per_hour), str(firm.energy_cost_per_unit),
         firm.energy_supplier_cash_account, str(firm.sales_markup),
         json.dumps({k: str(v) for k, v in firm.payroll_shares.items()}),
-        json.dumps(procurement or {}), mode, linked_symbol))
+        json.dumps(procurement or {}), mode, linked_symbol, owner_group, owner_account_id,
+        display_name, dividend_payout, cash_reserve))
     for p in firm.products.values():
         db.execute("INSERT INTO econ_products VALUES(?,?,?,?,?,?,?,?)", (
             firm.firm_id, p.sku, p.name, p.material_sku, str(p.material_units_per_unit),
@@ -227,39 +271,6 @@ def insert_household(db, h: HouseholdGroup) -> None:
 
 
 # ----------------------------------------------------------------- bootstrap
-def demo_world(ledger: Ledger):
-    """Self-contained sandbox world; all money comes from explicit issuance."""
-    hh = HouseholdGroup(group_id="SIM-H1", region="SIM", population=1000, avg_wage=D("15"),
-                        employed=600, savings_rate=D("0.10"))
-    ledger.issue_money(hh.cash_account, D("30000"), "sandbox demo household opening cash")
-    ledger.issue_money("firm:SIM-FIRM-1:cash", D("20000"), "sandbox demo firm opening capital")
-    firm = FirmProductionState(
-        firm_id="SIM-FIRM-1", region="SIM", cash_account="firm:SIM-FIRM-1:cash", employees=10,
-        wage_per_hour=D("10"), capacity_per_hour=D("5"), energy_cost_per_unit=D("0.8"),
-        energy_supplier_cash_account="market:energy:cash", payroll_shares={"SIM-H1": D("1")})
-    firm.products["widget"] = Product(sku="widget", name="Widget", material_sku="steel",
-                                      material_units_per_unit=D("1"), unit_labor_hours=D("0.5"),
-                                      category="goods")
-    policy = {"steel": {"target": "200", "unit_cost": "2",
-                        "supplier": "market:materials:cash", "max_cash_share": "0.5"}}
-    return [firm], [hh], {"SIM-FIRM-1": policy}
-
-
-def bootstrap_demo(db) -> dict:
-    if db.execute("SELECT 1 FROM econ_firms WHERE firm_id='SIM-FIRM-1'").fetchone():
-        raise TickConflict("Demo world already exists")
-    ledger = load_ledger(db)
-    firms, households, policies = demo_world(ledger)
-    for h in households:
-        insert_household(db, h)
-    for f in firms:
-        insert_firm(db, f, policies[f.firm_id])
-    save_ledger(db, ledger)
-    set_state(db, "money_supply", str(ledger.money_supply()))
-    return {"firms": [f.firm_id for f in firms], "households": [h.group_id for h in households],
-            "money_supply": str(ledger.money_supply())}
-
-
 def link_existing_companies(db) -> dict:
     """Create zero-cash shadow firms for legacy companies. Reads company_development
     only; moves no money and writes nothing to the legacy tables."""
@@ -281,67 +292,6 @@ def link_existing_companies(db) -> dict:
                    (firm.cash_account,))
         created.append(fid)
     return {"linked": created}
-
-
-# ---------------------------------------------------------------------- tick
-def apply_procurement(ledger: Ledger, firm: FirmProductionState, policy: dict) -> Decimal:
-    """Top up inputs toward target stock, spending at most max_cash_share of cash."""
-    spent = D("0")
-    for sku, rule in sorted(policy.items()):
-        need = quantity(D(rule["target"]) - quantity(firm.materials_stock.get(sku, D("0"))))
-        price = unit_value(rule["unit_cost"])
-        budget = ledger.balance(firm.cash_account) * D(rule.get("max_cash_share", "0.5"))
-        qty = quantity(min(need, budget / price)) if price > 0 else D("0")
-        if qty <= 0 or money(qty * price) <= 0:
-            continue
-        firm.acquire_materials(ledger, sku, qty, price, rule["supplier"])
-        spent += money(qty * price)
-    return money(spent)
-
-
-def run_persistent_tick(db, tick: Optional[int] = None, hours: Decimal = D("1")) -> dict:
-    """Run one tick. Caller must hold a BEGIN IMMEDIATE transaction (db.transaction())."""
-    hours = D(str(hours))
-    if not hours.is_finite() or hours <= 0 or hours > MAX_TICK_HOURS:
-        raise EconomyError("hours must be > 0 and <= 24")
-    last = int(get_state(db, "last_tick", "0"))
-    if tick is not None and tick != last + 1:
-        raise TickConflict(f"Expected tick {last + 1}, got {tick}")
-    nxt = last + 1
-    ledger = load_ledger(db)
-    firms, meta = load_firms(db)
-    households = load_households(db)
-    expected = D(get_state(db, "money_supply", "0"))
-    ledger.assert_money_supply(expected)  # persisted state must already be sound
-
-    active, skipped, purchases = [], [], D("0")
-    regions = {h.region for h in households if h.employed > 0}
-    for f in firms:
-        by_id = {h.group_id: h for h in households}
-        bad_shares = f.payroll_shares and any(
-            g not in by_id or by_id[g].region != f.region for g in f.payroll_shares)
-        if f.region not in regions or bad_shares:
-            skipped.append({"firm_id": f.firm_id, "reason": "no payroll recipients in region"})
-        else:
-            active.append(f)
-    ledger.set_tick(nxt)
-    for f in active:
-        purchases += apply_procurement(ledger, f, meta[f.firm_id]["procurement"])
-    stats = run_production_tick(ledger, active, households, hours, tick=nxt)
-    try:
-        ledger.assert_money_supply(expected)
-    except AssertionError as exc:
-        raise InvariantViolation(str(exc)) from exc
-    stats.update({"materials_purchased": money(purchases), "skipped_firms": skipped, "tick": nxt})
-    added = len(ledger.entries)
-    save_ledger(db, ledger)
-    for f in active:
-        save_firm_state(db, f)
-    db.execute("INSERT INTO econ_ticks(tick,hours,money_supply_before,money_supply_after,entries_added,stats) "
-               "VALUES(?,?,?,?,?,?)", (nxt, str(hours), str(expected), str(ledger.money_supply()),
-                                       added, json.dumps(jsonable(stats))))
-    set_state(db, "last_tick", str(nxt))
-    return jsonable(stats)
 
 
 # --------------------------------------------------------------------- reads

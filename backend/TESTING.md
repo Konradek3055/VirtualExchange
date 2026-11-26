@@ -14,3 +14,4 @@ market buy z ograniczeniem środków, brak podwójnego wydania, self-trade, wali
 Wynik na dzień utworzenia: 24 testy zaliczone. Android nie był kompilowany lokalnie - pierwszą weryfikacją jest GitHub Actions.
 
 `tests/test_economy_core.py` (7) i `tests/test_economy_integration.py` (10): migracje, trwałość, API, ticki, rollback, zgodność ze starym systemem. Razem 52 testy.
+`tests/test_economy_circulation.py` (10): 100 ticków, obieg pieniądza, księgowość, restart, rollback, operacje gracza, most do starych firm. Razem 62 testy.

@@ -56,7 +56,7 @@ class HouseholdGroup:
         cash = ledger.balance(self.cash_account)
         spendable = money(cash * (D("1") - self.savings_rate))
         if spendable <= 0:
-            return {"quantity": D("0"), "value": D("0")}
+            return {"quantity": D("0"), "value": D("0"), "by_offer": {}}
 
         total_bought = D("0")
         total_value = D("0")

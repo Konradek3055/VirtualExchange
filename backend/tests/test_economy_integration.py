@@ -5,7 +5,7 @@ import pytest
 
 from app import db as appdb
 from app.db import connect, init_db, transaction
-from app.economy import Ledger, run_production_tick, store
+from app.economy import Ledger, store, world
 from tests.test_companies import account, company, create_company
 
 ADMIN = {"X-Admin-Key": "secret-admin"}
@@ -37,14 +37,14 @@ def test_migration_is_idempotent_and_keeps_legacy_data(client):
     init_db()
     assert snapshot_legacy() == before
     with connect() as db:
-        assert [r[0] for r in db.execute("SELECT version FROM schema_migrations")] == [1]
-    assert client.get("/economy/status", headers=headers).json()["schema_version"] == 1
+        assert [r[0] for r in db.execute("SELECT version FROM schema_migrations")] == [1, 2]
+    assert client.get("/economy/status", headers=headers).json()["schema_version"] == 2
 
 
 def test_migration_of_populated_old_db_makes_backup(client):
     account(client, "alice")
     with connect() as db:   # simulate a pre-economy database
-        for t in ("econ_ticks", "econ_products", "econ_inventory", "econ_materials", "econ_firms",
+        for t in ("econ_bridge", "econ_entities", "econ_regions", "econ_ticks", "econ_products", "econ_inventory", "econ_materials", "econ_firms",
                   "econ_households", "econ_journal", "econ_accounts", "econ_state", "schema_migrations"):
             db.execute(f"DROP TABLE {t}")
         db.commit()
@@ -100,15 +100,12 @@ def test_persisted_run_matches_in_memory_run(econ):
     econ.post("/economy/admin/bootstrap-demo", headers=ADMIN)
     for _ in range(3):
         assert tick(econ).status_code == 200
-    ledger = Ledger()
-    firms, hhs, pol = store.demo_world(ledger)
+    twin = world.demo_world(Ledger())
     for n in range(1, 4):
-        ledger.set_tick(n)
-        store.apply_procurement(ledger, firms[0], pol["SIM-FIRM-1"])
-        run_production_tick(ledger, firms, hhs, D(1), tick=n)
+        world.tick_world(twin, n, D(1))
     with connect() as db:
         persisted = store.load_ledger(db)
-    assert {k: v for k, v in persisted.balances.items()} == dict(ledger.balances)
+    assert dict(persisted.balances) == dict(twin.ledger.balances)
 
 
 def test_duplicate_or_gapped_tick_rejected(econ):
@@ -129,10 +126,10 @@ def test_failed_tick_rolls_back_everything(econ, monkeypatch):
         firms[0].materials_stock["steel"] = D("0")
         ledger.post("a", "b", "5", "half-done")
         raise RuntimeError("boom")
-    monkeypatch.setattr(store, "run_production_tick", boom)
+    monkeypatch.setattr(world, "run_production_tick", boom)
     with pytest.raises(RuntimeError):
         with transaction() as db:
-            store.run_persistent_tick(db)
+            world.run_persistent_tick(db)
     with connect() as db:
         assert ([tuple(r) for r in db.execute("SELECT * FROM econ_accounts ORDER BY name")], store.status(db)) == before
 
@@ -144,7 +141,7 @@ def test_money_supply_tampering_is_detected(econ):
         db.commit()
     with pytest.raises(AssertionError):
         with transaction() as db:
-            store.run_persistent_tick(db)
+            world.run_persistent_tick(db)
 
 
 def test_legacy_companies_linked_without_touching_money(econ):

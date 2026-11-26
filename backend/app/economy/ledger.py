@@ -136,6 +136,22 @@ class Ledger:
             description=f"Explicit monetary issuance: {reason}",
         )
 
+    def redeem_money(self, cash_account: str, amount: object, reason: str) -> LedgerEntry:
+        """Explicitly destroy money (inverse of issuance); used only by the wallet bridge."""
+        value = money(amount)
+        if value <= 0:
+            raise ValueError("Redeemed amount must be greater than zero")
+        if cash_account not in self.money_accounts:
+            raise ValueError(f"Unregistered cash account: {cash_account}")
+        if self.balance(cash_account) < value:
+            raise ValueError(f"Insufficient funds in {cash_account}")
+        return self.post(
+            debit="system:monetary-issuance-counterpart",
+            credit=cash_account,
+            amount=value,
+            description=f"Explicit monetary redemption: {reason}",
+        )
+
     def transfer(
         self,
         sender_cash_account: str,
