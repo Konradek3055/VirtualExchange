@@ -41,4 +41,19 @@ class ChartTypeTest {
         ), 60)
         assertTrue(result.isEmpty())
     }
+
+    @Test fun openLinksToPreviousCloseSoCandlesHaveNoPriceGaps() {
+        val input = listOf(
+            Candle("2026-11-25 10:00", 9.0, 10.0, 8.0, 9.5, 2.0),
+            Candle("2026-11-25 10:01", 12.0, 13.0, 11.0, 12.5, 3.0),
+        )
+        val linked = fillCandles(input, 60)
+        assertEquals(9.5, linked[1].open, 1e-9)
+        assertEquals(13.0, linked[1].high, 1e-9)
+        assertEquals(9.5, linked[1].low, 1e-9)
+        assertEquals(12.5, linked[1].close, 1e-9)
+        assertEquals(3.0, linked[1].volume, 1e-9)
+        val raw = fillCandles(input, 60, continuous = false)
+        assertEquals(12.0, raw[1].open, 1e-9)
+    }
 }

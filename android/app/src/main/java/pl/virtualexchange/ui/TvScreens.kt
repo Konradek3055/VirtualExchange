@@ -705,7 +705,7 @@ private fun PortfolioEmpty(title: String, description: String) {
 /* ------------------------------------------------------------------ MENU (karty jak w TradingView) */
 
 @Composable
-fun TvMenuTab(store: Store, scope: CoroutineScope) {
+fun TvMenuTab(store: Store, scope: CoroutineScope, onEconomy: () -> Unit = {}) {
     var offline by remember { mutableStateOf(Api.offline) }
     var url by remember { mutableStateOf(Api.baseUrl) }
     var key by remember { mutableStateOf(Api.apiKey) }
@@ -720,6 +720,11 @@ fun TvMenuTab(store: Store, scope: CoroutineScope) {
         Modifier.fillMaxSize().background(Tv.Bg).verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
+        TvCard(Modifier.clickable(onClick = onEconomy)) {
+            Text("GOSPODARKA", color = Tv.Blue, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.1.sp)
+            Text("Firmy, dostawcy i księgowość", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 3.dp))
+            Text("Zarządzaj firmą w symulatorze gospodarki (tryb online).", color = Tv.Muted, fontSize = 12.sp, modifier = Modifier.padding(top = 2.dp))
+        }
         TvCard {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Box(Modifier.size(56.dp).clip(RoundedCornerShape(28.dp)).background(Color(0xFF9C5B7B)), contentAlignment = Alignment.Center) {

@@ -40,6 +40,7 @@ import pl.virtualexchange.data.Api
 import pl.virtualexchange.ui.TerminalChartTab
 import pl.virtualexchange.ui.TvHomeTab
 import pl.virtualexchange.ui.TvCompanyTab
+import pl.virtualexchange.ui.TvEconomyTab
 import pl.virtualexchange.ui.TvBottomBar
 import pl.virtualexchange.ui.TvMarketTab
 import pl.virtualexchange.ui.TvMenuTab
@@ -96,7 +97,8 @@ fun ExchangeApp() {
                 3 -> TvTradeTab(store, scope)
                 4 -> TvPortfolioTab(store, scope)
                 5 -> TvCompanyTab(store, scope)
-                else -> TvMenuTab(store, scope)
+                7 -> TvEconomyTab(store, scope)
+                else -> TvMenuTab(store, scope, onEconomy = { tab = 7 })
             }
         }
     }
