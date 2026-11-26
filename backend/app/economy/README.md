@@ -52,6 +52,12 @@ existing company-development subsystem.
 - Pre-v2 `market:*` accounts are adopted as `LEGACY-ENERGY` / `LEGACY-MATERIALS` suppliers.
 - Migration v2 is additive (new tables, nullable/default columns, indexes) with an automatic backup.
 
+## Automatic ticks
+
+Set `VE_ECONOMY_ENABLED=1` and `VE_ECONOMY_AUTOTICK_SECONDS=<n>` (n >= 5) and the server advances
+the economy by one simulated hour every n seconds (`scheduler.py`). Each tick is atomic; a failed
+tick is rolled back, logged and retried. Without it, ticks only run via `POST /economy/admin/tick`.
+
 ## Known limitations
 
 - Demo money concentrates in owners (dividends) and workers' cash trends down: no consumer credit,

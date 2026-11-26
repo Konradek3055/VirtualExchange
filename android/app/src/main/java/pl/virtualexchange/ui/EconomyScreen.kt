@@ -39,10 +39,10 @@ import org.json.JSONObject
 import pl.virtualexchange.data.Api
 import pl.virtualexchange.data.objects
 
-/** Ekran gospodarki: wszystkie dane pochodzą z API /economy/* (backend: Economy Core), bez danych lokalnych. */
+// Ekran gospodarki: wszystkie dane pochodzą z API gospodarki na serwerze (Economy Core), bez danych lokalnych.
 private val KIND_PL = mapOf("materials" to "Surowce", "energy" to "Energia", "capital" to "Maszyny")
 private val PRODUCTS = listOf("widget" to "Widget (stal)", "bread" to "Chleb (zboże)")
-private val ACTIONS = listOf("Wpłata", "Surowce", "Zatrudnienie", "Płaca", "Cena", "Maszyny", "Dywidenda")
+private val ACTIONS = listOf("Wpłata", "Surowce", "Auto-zakup", "Zatrudnienie", "Płaca", "Cena", "Maszyny", "Dywidenda")
 
 private fun money(s: String?): String = s?.toDoubleOrNull()?.let { fmtUsd(it) } ?: "—"
 
@@ -118,7 +118,7 @@ fun TvEconomyTab(store: Store, scope: CoroutineScope) {
                 )
             }
         }
-        item { PillTabs(listOf("Przegląd", "Moje firmy", "Dostawcy", "Rejestr"), section, { section = it }) }
+        item { PillTabs(listOf("Przewodnik", "Przegląd", "Moje firmy", "Dostawcy", "Rejestr"), section, { section = it }) }
         if (error.isNotEmpty()) {
             item {
                 TvCard {
@@ -133,11 +133,17 @@ fun TvEconomyTab(store: Store, scope: CoroutineScope) {
             item { Text("Ładowanie…", color = Tv.Muted, fontSize = 13.sp) }
         } else when (section) {
             0 -> {
+                item { ProgressCard(status, myFirms) }
+                item { GuideCard("Jak działa ta gospodarka", GUIDE_ECONOMY) }
+                item { GuideCard("Jak założyć i prowadzić firmę", GUIDE_FIRM) }
+                item { GuideCard("Co oznaczają liczby", GUIDE_TERMS) }
+            }
+            1 -> {
                 item { OverviewCard(status) }
                 items(regions) { RegionCard(it) }
                 items(households) { HouseholdCard(it) }
             }
-            1 -> {
+            2 -> {
                 item {
                     WithdrawCard { amount -> act("player/withdraw", JSONObject().put("amount", amount), "Wypłacono do portfela.") }
                 }
@@ -151,7 +157,7 @@ fun TvEconomyTab(store: Store, scope: CoroutineScope) {
                 }
                 items(myFirms) { firm -> FirmPanel(firm, ::act) }
             }
-            2 -> {
+            3 -> {
                 if (entities.isEmpty()) item { Text("Brak dostawców.", color = Tv.Muted, fontSize = 13.sp) }
                 items(entities) { SupplierCard(it) }
             }
@@ -218,7 +224,7 @@ private fun OverviewCard(status: JSONObject) {
         StatRow("Wersja schematu", status.optInt("schema_version", 0).toString())
         if (status.optInt("last_tick", 0) == 0) {
             Text(
-                "Świat nie wykonał jeszcze żadnego ticku. Ticki uruchamia serwer (endpoint administracyjny) — aplikacja ich nie wywołuje.",
+                "Świat nie wykonał jeszcze żadnego ticku. Ticki liczy serwer (VE_ECONOMY_AUTOTICK_SECONDS) — aplikacja ich nie wywołuje.",
                 color = Tv.Muted, fontSize = 12.sp, modifier = Modifier.padding(top = 8.dp),
             )
         }
@@ -365,31 +371,37 @@ private fun FirmPanel(firm: JSONObject, act: (String, JSONObject, String) -> Uni
             Spacer(Modifier.height(8.dp))
             val label = when (action) {
                 0 -> "Kwota wpłaty z portfela (USD)"
-                1 -> "Ilość surowca ($material) do kupienia"
-                2 -> "Zmiana zatrudnienia (np. 5 lub -3)"
-                3 -> "Nowa płaca za godzinę (5–500)"
-                4 -> "Marża nad kosztem (1,0–5,0)"
-                5 -> "Kwota inwestycji w maszyny (USD)"
+                1 -> "Ilość surowca ($material) do kupienia teraz"
+                2 -> "Docelowy zapas surowca ($material) — serwer dokupuje co tick (0 = wyłącz)"
+                3 -> "Zmiana zatrudnienia (np. 5 lub -3)"
+                4 -> "Nowa płaca za godzinę (5–500)"
+                5 -> "Marża nad kosztem (1,0–5,0)"
+                6 -> "Kwota inwestycji w maszyny (USD)"
                 else -> "Kwota dywidendy do wypłaty (USD)"
             }
             TvInput(label, value, { value = it.replace(',', '.') }, keyboard = KeyboardType.Decimal)
             Spacer(Modifier.height(8.dp))
             val number = value.toDoubleOrNull()
-            val valid = number != null && (action == 2 && number != 0.0 && number == Math.rint(number) || action != 2 && number > 0)
+            val valid = number != null && when (action) {
+                3 -> number != 0.0 && number == Math.rint(number)
+                2 -> number >= 0
+                else -> number > 0
+            }
             EcoButton("Wykonaj", valid) {
                 val base = "player/firms/$id"
                 val v = value.trim()
                 when (action) {
                     0 -> act("$base/deposit", JSONObject().put("amount", v), "Kapitał wpłacony.")
                     1 -> act("$base/materials", JSONObject().put("sku", material).put("quantity", v), "Surowce kupione.")
-                    2 -> {
+                    2 -> act("$base/procurement", JSONObject().put("sku", material).put("target", v), "Auto-zakup zapisany.")
+                    3 -> {
                         val n = number!!.toInt()
                         act("$base/staff", JSONObject().put("action", if (n > 0) "hire" else "fire").put("count", Math.abs(n)),
                             if (n > 0) "Zatrudniono pracowników." else "Zwolniono pracowników.")
                     }
-                    3 -> act("$base/wage", JSONObject().put("wage_per_hour", v), "Płaca zmieniona.")
-                    4 -> act("$base/price", JSONObject().put("markup", v), "Marża zmieniona.")
-                    5 -> act("$base/capex", JSONObject().put("amount", v), "Maszyny kupione.")
+                    4 -> act("$base/wage", JSONObject().put("wage_per_hour", v), "Płaca zmieniona.")
+                    5 -> act("$base/price", JSONObject().put("markup", v), "Marża zmieniona.")
+                    6 -> act("$base/capex", JSONObject().put("amount", v), "Maszyny kupione.")
                     else -> act("$base/dividend", JSONObject().put("amount", v), "Dywidenda wypłacona.")
                 }
                 value = ""
@@ -437,4 +449,67 @@ private fun Statements(s: JSONObject) {
     StatRow("Inwestycyjne", money(cf.optString("investing")))
     StatRow("Finansowe", money(cf.optString("financing")))
     StatRow("Zmiana gotówki", money(cf.optString("net_change")), bold = true)
+}
+
+private val GUIDE_ECONOMY = listOf(
+    "Pieniądz nie powstaje znikąd. Każdy dolar przechodzi od kogoś do kogoś: z portfela do firmy, z firmy do dostawców i pracowników, od pracowników do sklepów, z zysku do właściciela i państwa.",
+    "Twoja firma kupuje surowce i energię od dostawców, płaci pracownikom, produkuje towar i sprzedaje go gospodarstwom domowym. Przychód powstaje dopiero po prawdziwej sprzedaży.",
+    "Dostawcy to też firmy: mają właściciela, pracowników, koszty i płacą podatki. Dlatego pieniądze wracają do obiegu, a nie znikają.",
+    "Państwo pobiera podatki (dochodowy i CIT) i oddaje je gospodarstwom jako transfery. Zysk firmy możesz wypłacać jako dywidendę.",
+    "Świat idzie naprzód w tickach (1 tick = 1 godzina symulacji). Liczy je serwer, nawet gdy aplikacja jest zamknięta.",
+)
+
+private val GUIDE_FIRM = listOf(
+    "1. Zakładka „Moje firmy” → „Załóż firmę”: wpisz nazwę i wybierz produkt (Widget używa stali, Chleb — zboża).",
+    "2. Rozwiń firmę (Szczegóły) → Decyzje → „Wpłata”: przenosisz USD z portfela do firmy. Bez kapitału firma nic nie zrobi.",
+    "3. „Surowce”: kup pierwszą partię. „Auto-zakup”: ustaw docelowy zapas, a serwer sam dokupuje co tick (zużywa najwyżej połowę gotówki).",
+    "4. „Zatrudnienie”: więcej pracowników = większa produkcja, ale wyższe płace. Potrzebujesz gotówki na 24 godziny płac.",
+    "5. „Płaca” i „Cena”: wyższa płaca kosztuje, wyższa marża daje większy zysk, ale gospodarstwa mogą kupować mniej.",
+    "6. „Maszyny”: inwestycja zwiększa moc produkcji. Maszyny się zużywają (amortyzacja), więc zysk liczy ten koszt.",
+    "7. Poczekaj kilka ticków i zobacz bilans, rachunek zysków i strat oraz przepływy pod „Szczegóły”.",
+    "8. Gdy jest zysk: „Dywidenda” wypłaca go do Twojej gotówki w gospodarce, a „Wypłać do portfela” zamienia ją z powrotem na USD.",
+)
+
+private val GUIDE_TERMS = listOf(
+    "Gotówka — pieniądze firmy na jej koncie. Moc/h — ile jednostek towaru firma może wyprodukować na godzinę.",
+    "Marża — mnożnik ceny sprzedaży nad kosztem wytworzenia (×1,30 to 30% nad kosztem).",
+    "Zysk brutto — przychody minus koszt sprzedanych towarów. Zysk netto — po amortyzacji i podatku CIT.",
+    "Kapitał wniesiony — to, co wpłaciłeś. Zysk zatrzymany — to, co firma zarobiła i nie wypłaciła.",
+    "Bilans jest zgodny, gdy aktywa równają się zobowiązaniom plus kapitałowi własnemu. Liczymy go z zapisów księgowych, nie z osobnych danych.",
+)
+
+@Composable
+private fun GuideCard(title: String, lines: List<String>) {
+    TvCard {
+        Text(title.uppercase(), color = Tv.Blue, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.1.sp)
+        lines.forEach {
+            Text(it, color = Color.White, fontSize = 13.sp, modifier = Modifier.padding(top = 8.dp))
+        }
+    }
+}
+
+@Composable
+private fun ProgressCard(status: JSONObject, firms: List<JSONObject>) {
+    val funded = firms.any { (it.optString("cash").toDoubleOrNull() ?: 0.0) > 0.0 }
+    val steps = listOf(
+        "Połączono z serwerem gospodarki" to (status.length() > 0),
+        "Założono firmę" to firms.isNotEmpty(),
+        "Firma ma kapitał" to funded,
+        "Świat działa (wykonano ticki)" to (status.optInt("last_tick", 0) > 0),
+    )
+    TvCard {
+        Text("TWOJE POSTĘPY", color = Tv.Blue, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.1.sp)
+        steps.forEach { (label, done) ->
+            Row(Modifier.padding(top = 8.dp)) {
+                Text(if (done) "✓" else "○", color = if (done) Tv.Up else Tv.Muted, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                Text(label, color = if (done) Color.White else Tv.Muted, fontSize = 13.sp, modifier = Modifier.padding(start = 10.dp))
+            }
+        }
+        if (status.length() > 0 && status.optInt("last_tick", 0) == 0) {
+            Text(
+                "Serwer nie wykonał jeszcze ticku. Ustaw na serwerze VE_ECONOMY_AUTOTICK_SECONDS (np. 30), żeby świat działał sam.",
+                color = Tv.Muted, fontSize = 12.sp, modifier = Modifier.padding(top = 10.dp),
+            )
+        }
+    }
 }
