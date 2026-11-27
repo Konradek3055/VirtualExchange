@@ -52,6 +52,32 @@ object LocalApi {
 
                 method == "GET" && route == "bots" -> m.botOverview().toString()
 
+                method == "GET" && route == "companies/private" ->
+                    m.listPrivateCompanies().toString()
+
+                method == "POST" && route == "companies/private" -> {
+                    val b = body ?: bad("Brak danych")
+                    m.foundPrivateCompany(
+                        b.optString("name"),
+                        b.optString("description"),
+                        b.optString("sector", "services"),
+                        b.optString("legal_form", "jdg"),
+                        dec(b.optString("capital"), "Kapitał startowy"),
+                    ).toString()
+                }
+
+                method == "POST" && parts[0] == "companies" && parts.size == 3 && parts[2] == "ipo" -> {
+                    val b = body ?: bad("Brak danych")
+                    m.requestPrivateIpo(
+                        parts[1],
+                        b.optString("symbol"),
+                        dec(b.optString("total_supply"), "Podaż akcji"),
+                    ).toString()
+                }
+
+                method == "POST" && parts[0] == "companies" && parts.size == 3 && parts[2] == "convert" ->
+                    m.convertPrivateCompany(parts[1]).toString()
+
                 method == "GET" && parts[0] == "companies" && parts.size == 3 && parts[2] == "development" ->
                     m.getCompanyDevelopment(parts[1]).toString()
 

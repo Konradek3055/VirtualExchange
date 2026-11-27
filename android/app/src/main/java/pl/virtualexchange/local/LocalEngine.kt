@@ -104,6 +104,19 @@ class LocalEngine(var clock: () -> Long = { System.currentTimeMillis() }) {
         grant(accounts[accountId] ?: throw EngineError("Konto nie istnieje"), symbol, amount)
     }
 
+    /** Przeniesienie już istniejących jednostek między kontami bez ponownej emisji. */
+    fun transferAsset(fromAccountId: Int, toAccountId: Int, symbol: String, amount: BigDecimal) = synchronized(lock) {
+        if (amount.signum() <= 0) throw EngineError("Nieprawidłowa ilość transferu")
+        val from = accounts[fromAccountId] ?: throw EngineError("Konto źródłowe nie istnieje")
+        val to = accounts[toAccountId] ?: throw EngineError("Konto docelowe nie istnieje")
+        if (fromAccountId == toAccountId) throw EngineError("Konta transferu muszą być różne")
+        val source = from.bal(symbol)
+        if (source.available < amount) throw EngineError("Za mało aktywa do transferu")
+        source.available = source.available.subtract(amount)
+        val target = to.bal(symbol)
+        target.available = target.available.add(amount)
+    }
+
     /** Nowe aktywo. creatorId != null: cała stała podaż trafia do twórcy. refPrice tylko dla aktywów startowych. */
     fun createAsset(creatorId: Int?, symbol: String, name: String, description: String,
                     supply: BigDecimal, refPrice: BigDecimal = BigDecimal.ZERO): Asset = synchronized(lock) {

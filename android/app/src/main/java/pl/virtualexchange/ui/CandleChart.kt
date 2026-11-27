@@ -22,7 +22,8 @@ fun CandleChart(candles: List<Candle>, modifier: Modifier = Modifier) {
         val range = if (high - low > 0.0) high - low else if (high != 0.0) high * 0.02 else 1.0
         val maxVolume = candles.maxOf { it.volume }.let { if (it > 0.0) it else 1.0 }
         val slot = size.width / candles.size
-        val bodyWidth = (slot * 0.64f).coerceAtLeast(2f)
+        // Korpus nie może przekraczać slotu, bo świece nachodzą na siebie przy zoom-out.
+        val bodyWidth = (slot * 0.84f).coerceAtLeast(minOf(1.2f, slot)).coerceAtMost(slot)
         val grid = Color(0xFF263442)
 
         for (line in 0..4) {

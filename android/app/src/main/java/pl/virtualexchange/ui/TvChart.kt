@@ -505,11 +505,13 @@ fun TvChart(
                         }
                         when (chartType) {
                             ChartType.CANDLES, ChartType.HEIKIN -> {
-                                val wick = (cw * 0.07f).coerceIn(1f, 2.5f)
+                                // Korpus nie może być szerszy niż slot świecy.
+                                val bodyWidth = (cw * 0.84f).coerceAtLeast(minOf(1.2f, cw)).coerceAtMost(cw)
+                                val wick = (cw * 0.10f).coerceAtLeast(minOf(0.8f, cw)).coerceAtMost(cw)
                                 drawLine(col, Offset(x, g.y(c.high)), Offset(x, g.y(c.low)), wick)
                                 val top = g.y(max(c.open, c.close))
                                 val bot = g.y(min(c.open, c.close))
-                                drawRect(col, Offset(x - cw * 0.36f, top), Size(cw * 0.72f, max(bot - top, 1.5f)))
+                                drawRect(col, Offset(x - bodyWidth / 2f, top), Size(bodyWidth, max(bot - top, 1.5f)))
                             }
                             ChartType.BARS -> {
                                 val w = (cw * 0.08f).coerceIn(1.5f, 3f)
