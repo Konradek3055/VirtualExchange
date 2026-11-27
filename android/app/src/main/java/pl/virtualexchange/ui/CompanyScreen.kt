@@ -17,23 +17,27 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.json.JSONObject
 import pl.virtualexchange.data.Api
+import pl.virtualexchange.data.objects
 import java.util.Locale
 
 @Composable
 fun TvCompanyTab(store: Store, scope: CoroutineScope) {
-    var symbol by remember { mutableStateOf("") }
     var name by remember { mutableStateOf("") }
     var description by remember { mutableStateOf("") }
-    var supply by remember { mutableStateOf("1000000") }
+    var startupCapital by remember { mutableStateOf("5000") }
+    var sector by remember { mutableStateOf("technology") }
+    var legalForm by remember { mutableStateOf("sp_zoo") }
     var creating by remember { mutableStateOf(false) }
+    var privateCompanies by remember { mutableStateOf(listOf<JSONObject>()) }
     var developments by remember { mutableStateOf<Map<String, JSONObject>>(emptyMap()) }
     var busyCompany by remember { mutableStateOf("") }
     val companies = store.assets.filter { !it.isNull("creator_id") }
     val mine = companies.filter { it.optInt("creator_id", -1) == store.userId }
-    val limitReached = mine.size >= 3
+    val privateLimitReached = mine.size + privateCompanies.size >= 5
 
     fun runCompanyAction(ticker: String, endpoint: String, payload: JSONObject, success: String) {
         busyCompany = ticker
@@ -42,6 +46,10 @@ fun TvCompanyTab(store: Store, scope: CoroutineScope) {
                 val result = Api.post("companies/" + ticker + "/" + endpoint, payload)
                 developments = developments + (ticker to result)
                 store.refreshAccount()
+                if (Api.offline) {
+                    try { privateCompanies = Api.getArray("companies/private", auth = true).objects() }
+                    catch (_: Exception) { }
+                }
                 store.message = success
             } catch (error: Exception) {
                 store.message = error.message ?: "Nie udało się wykonać operacji spółki."
@@ -59,6 +67,19 @@ fun TvCompanyTab(store: Store, scope: CoroutineScope) {
             catch (_: Exception) { }
         }
         developments = loaded
+        if (Api.offline) {
+            try { privateCompanies = Api.getArray("companies/private", auth = true).objects() }
+            catch (_: Exception) { /* Zachowaj ostatnią listę, jeśli chwilowo nie ma odpowiedzi. */ }
+        }
+    }
+    LaunchedEffect(store.userId, Api.offline) {
+        if (Api.offline) {
+            while (true) {
+                delay(10_000)
+                try { privateCompanies = Api.getArray("companies/private", auth = true).objects() }
+                catch (_: Exception) { }
+            }
+        }
     }
 
     LazyColumn(Modifier.fillMaxSize().background(Tv.Bg),
@@ -86,47 +107,84 @@ fun TvCompanyTab(store: Store, scope: CoroutineScope) {
                     color = Tv.Muted, fontSize = 12.sp, modifier = Modifier.padding(top = 5.dp))
             }
         }
+        if (Api.offline) {
         item {
             TvCard {
-                Text("ZAŁÓŻ NOWĄ SPÓŁKĘ", color = Tv.Blue, fontSize = 10.sp,
+                Text("REJESTRACJA PRYWATNEJ FIRMY", color = Tv.Blue, fontSize = 10.sp,
                     fontWeight = FontWeight.Bold, letterSpacing = 1.1.sp)
-                Text("Wprowadź firmę na giełdę", color = Color.White, fontSize = 18.sp,
+                Text("Najpierw zbuduj przedsiębiorstwo", color = Color.White, fontSize = 18.sp,
                     fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 4.dp))
-                TvInput("Ticker (2–10 znaków)", symbol, { symbol = it.uppercase(Locale.ROOT) }, placeholder = "np. NOVA")
+                Text(
+                    "Firma nie trafia od razu na giełdę. Najpierw przechodzi rejestrację, rozpoczyna działalność, zdobywa klientów i buduje wyniki. Dopiero później może złożyć wniosek o IPO.",
+                    color = Tv.Muted, fontSize = 12.sp, modifier = Modifier.padding(top = 5.dp),
+                )
                 Spacer(Modifier.height(9.dp))
-                TvInput("Nazwa spółki", name, { name = it }, placeholder = "Nazwa firmy")
-                Spacer(Modifier.height(9.dp))
-                TvInput("Opis działalności", description, { description = it }, placeholder = "Czym zajmuje się Twoja spółka?")
-                Spacer(Modifier.height(9.dp))
-                TvInput("Stała podaż akcji", supply, { supply = it }, keyboard = KeyboardType.Decimal, placeholder = "1000000")
-                Text("Opłata emisyjna: 100 wirtualnych USD • limit 3 spółek na gracza",
-                    color = Tv.Muted, fontSize = 10.sp, modifier = Modifier.padding(top = 9.dp))
+                TvInput("Nazwa firmy", name, { name = it }, placeholder = "np. Nova Robotics")
+                Spacer(Modifier.height(8.dp))
+                TvInput("Opis działalności", description, { description = it }, placeholder = "Czym będzie zajmować się firma?")
+                Spacer(Modifier.height(8.dp))
+                TvInput("Kapitał startowy USD", startupCapital,
+                    { startupCapital = it.filter { ch -> ch.isDigit() || ch == '.' || ch == ',' }.replace(',', '.') },
+                    keyboard = KeyboardType.Decimal, placeholder = "5000")
+                Text("FORMA PRAWNA", color = Tv.Muted, fontSize = 9.sp, fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(top = 10.dp, bottom = 5.dp))
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                    OutlinedButton(onClick = { legalForm = "jdg" }, modifier = Modifier.weight(1f)) {
+                        Text(if (legalForm == "jdg") "✓ JDG" else "JDG", fontSize = 10.sp)
+                    }
+                    OutlinedButton(onClick = { legalForm = "sp_zoo" }, modifier = Modifier.weight(1f)) {
+                        Text(if (legalForm == "sp_zoo") "✓ SP. Z O.O." else "SP. Z O.O.", fontSize = 10.sp)
+                    }
+                }
+                Text("BRANŻA", color = Tv.Muted, fontSize = 9.sp, fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(top = 8.dp, bottom = 5.dp))
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                    listOf("technology" to "TECH", "industry" to "PRZEMYSŁ", "consumer" to "HANDEL",
+                        "food" to "ŻYWNOŚĆ", "services" to "USŁUGI").forEach { (key, label) ->
+                        OutlinedButton(
+                            onClick = { sector = key },
+                            modifier = Modifier.weight(1f),
+                            contentPadding = PaddingValues(horizontal = 3.dp, vertical = 7.dp),
+                        ) {
+                            Text(if (sector == key) "✓ $label" else label, fontSize = 8.sp)
+                        }
+                    }
+                }
+                Text(
+                    if (legalForm == "sp_zoo") "Minimalny kapitał: 5 000 USD • rejestracja: 400 USD"
+                    else "Minimalny kapitał: 1 500 USD • rejestracja: 150 USD",
+                    color = Tv.Muted, fontSize = 10.sp, modifier = Modifier.padding(top = 8.dp),
+                )
                 Button(
                     onClick = {
                         creating = true
                         scope.launch {
                             try {
-                                val payload = JSONObject().put("symbol", symbol.trim().uppercase(Locale.ROOT))
-                                    .put("name", name.trim()).put("description", description.trim())
-                                    .put("total_supply", supply.trim())
-                                val result = Api.post("assets", payload)
-                                store.message = "Utworzono spółkę " + result.optString("symbol", symbol) + "."
-                                symbol = ""; name = ""; description = ""; supply = "1000000"
-                                store.refreshAll()
+                                Api.post("companies/private", JSONObject()
+                                    .put("name", name.trim())
+                                    .put("description", description.trim())
+                                    .put("capital", startupCapital.trim())
+                                    .put("sector", sector)
+                                    .put("legal_form", legalForm))
+                                store.message = "Zarejestrowano firmę. Trwa przygotowanie do rozpoczęcia działalności."
+                                name = ""; description = ""; startupCapital = if (legalForm == "sp_zoo") "5000" else "1500"
+                                privateCompanies = Api.getArray("companies/private", auth = true).objects()
                             } catch (error: Exception) {
-                                store.message = error.message ?: "Nie udało się utworzyć spółki."
+                                store.message = error.message ?: "Nie udało się zarejestrować firmy."
                             } finally {
                                 creating = false
                             }
                         }
                     },
-                    enabled = !creating && !limitReached && symbol.trim().matches(Regex("[A-Z][A-Z0-9]{1,9}")) &&
-                        name.trim().length in 2..40 && (supply.toBigDecimalOrNull()?.signum() ?: 0) > 0,
+                    enabled = !creating && !privateLimitReached && name.trim().length in 3..60 &&
+                        (startupCapital.toBigDecimalOrNull()?.let {
+                            it >= if (legalForm == "sp_zoo") java.math.BigDecimal("5000") else java.math.BigDecimal("1500")
+                        } ?: false),
                     modifier = Modifier.fillMaxWidth().padding(top = 12.dp).height(48.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = Tv.Blue),
                     shape = RoundedCornerShape(11.dp),
                 ) {
-                    Text(if (creating) "TWORZENIE..." else if (limitReached) "LIMIT WYKORZYSTANY" else "ZAŁÓŻ SPÓŁKĘ",
+                    Text(if (creating) "REJESTRACJA..." else if (privateLimitReached) "LIMIT WYKORZYSTANY" else "ZAREJESTRUJ FIRMĘ",
                         color = Color(0xFF07131E), fontWeight = FontWeight.Bold)
                 }
                 if (store.message.isNotBlank()) Text(store.message, color = Tv.Muted, fontSize = 11.sp,
@@ -135,7 +193,69 @@ fun TvCompanyTab(store: Store, scope: CoroutineScope) {
                     fontSize = 10.sp, modifier = Modifier.padding(top = 5.dp))
             }
         }
-        item { Text("TWOJE SPÓŁKI", color = Tv.Muted, fontSize = 10.sp, fontWeight = FontWeight.Bold) }
+        item { Text("TWOJE FIRMY PRYWATNE", color = Tv.Muted, fontSize = 10.sp, fontWeight = FontWeight.Bold) }
+        if (privateCompanies.isEmpty()) {
+            item {
+                TvCard {
+                    Text("Nie masz jeszcze prywatnego przedsiębiorstwa.", color = Color.White,
+                        fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                    Text("Załóż firmę, zgromadź kapitał i prowadź ją przed debiutem giełdowym.",
+                        color = Tv.Muted, fontSize = 12.sp, modifier = Modifier.padding(top = 5.dp))
+                }
+            }
+        } else {
+            items(privateCompanies, key = { it.optString("business_id") }) { business ->
+                val businessId = business.optString("business_id")
+                PrivateBusinessCard(
+                    business,
+                    onConvert = {
+                        scope.launch {
+                            try {
+                                Api.post("companies/$businessId/convert", JSONObject())
+                                store.message = "Rozpoczęto przekształcenie firmy. Trwa procedura formalna."
+                                privateCompanies = Api.getArray("companies/private", auth = true).objects()
+                            } catch (error: Exception) {
+                                store.message = error.message ?: "Nie udało się przekształcić firmy."
+                            }
+                        }
+                    },
+                    onIpo = { ticker, totalSupply ->
+                        scope.launch {
+                            try {
+                                Api.post("companies/$businessId/ipo", JSONObject()
+                                    .put("symbol", ticker.trim().uppercase(Locale.ROOT))
+                                    .put("total_supply", totalSupply.trim()))
+                                store.message = "Wniosek IPO przyjęty. Trwa przegląd i przygotowanie debiutu."
+                                privateCompanies = Api.getArray("companies/private", auth = true).objects()
+                            } catch (error: Exception) {
+                                store.message = error.message ?: "Nie udało się złożyć wniosku IPO."
+                            }
+                        }
+                    },
+                )
+                if (business.optString("stage") == "OPERATING") {
+                    CompanyDevelopmentCard(
+                        state = business,
+                        busy = busyCompany == businessId,
+                        onUpgrade = { branch -> runCompanyAction(businessId, "upgrade", JSONObject().put("branch", branch), "Rozwinięto dział firmy.") },
+                        onFund = { amount -> runCompanyAction(businessId, "capital", JSONObject().put("amount", amount), "Zasilono kasę firmy.") },
+                        onWithdraw = {},
+                        onStaff = { action, count -> runCompanyAction(businessId, "staff", JSONObject().put("action", action).put("count", count), "Zaktualizowano zatrudnienie.") },
+                        allowDividends = false,
+                    )
+                }
+            }
+        }
+        } else {
+            item {
+                TvCard {
+                    Text("CYKL PRYWATNA FIRMA → IPO", color = Tv.Blue, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                    Text("Ten proces jest na razie dostępny w trybie offline. W trybie online nadal możesz przeglądać notowane spółki; serwer wymaga osobnej migracji, zanim obsłuży prywatne firmy i IPO.",
+                        color = Tv.Muted, fontSize = 12.sp, modifier = Modifier.padding(top = 5.dp))
+                }
+            }
+        }
+        item { Text("TWOJE SPÓŁKI NOTOWANE", color = Tv.Muted, fontSize = 10.sp, fontWeight = FontWeight.Bold) }
         if (mine.isEmpty()) {
             item {
                 TvCard {
@@ -174,6 +294,100 @@ fun TvCompanyTab(store: Store, scope: CoroutineScope) {
     }
 }
 
+
+@Composable
+private fun PrivateBusinessCard(
+    state: JSONObject,
+    onConvert: () -> Unit,
+    onIpo: (String, String) -> Unit,
+) {
+    val id = state.optString("business_id")
+    var ticker by remember(id) { mutableStateOf("") }
+    var supply by remember(id) { mutableStateOf("1000000") }
+    val stage = state.optString("stage", "REGISTERING")
+    val legal = if (state.optString("legal_form") == "sp_zoo") "Spółka z o.o." else "JDG"
+    val stageLabel = when (stage) {
+        "REGISTERING" -> "REJESTRACJA"
+        "OPERATING" -> "DZIAŁA PRYWATNIE"
+        "IPO_REVIEW" -> "PRZEGLĄD IPO"
+        "CONVERTING" -> "PRZEKSZTAŁCENIE"
+        else -> stage
+    }
+    val cash = state.optString("cash", "0").toDoubleOrNull() ?: 0.0
+    val revenue = state.optString("revenue_total", "0").toDoubleOrNull() ?: 0.0
+    val expenses = state.optString("expense_total", "0").toDoubleOrNull() ?: 0.0
+    TvCard {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text(state.optString("name"), color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                Text("$legal • ${state.optString("sector").uppercase(Locale.ROOT)}",
+                    color = Tv.Muted, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+            }
+            Text(stageLabel, color = if (stage == "IPO_REVIEW") Tv.Blue else Tv.Up,
+                fontSize = 9.sp, fontWeight = FontWeight.Bold)
+        }
+        Text(state.optString("description"), color = Tv.Muted, fontSize = 11.sp,
+            modifier = Modifier.padding(top = 5.dp))
+        HorizontalDivider(Modifier.padding(vertical = 9.dp), color = Tv.Line)
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            CompanyStat("KASA FIRMY", fmtUsd(cash))
+            CompanyStat("PRACOWNICY", state.optInt("employees").toString())
+            CompanyStat("REPUTACJA", "${state.optDouble("reputation", 50.0).toInt()}/100")
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            CompanyStat("PRZYCHODY", fmtUsd(revenue))
+            CompanyStat("KOSZTY", fmtUsd(expenses))
+            CompanyStat("DZIAŁALNOŚĆ", "${state.optInt("operating_hours")} h")
+        }
+        when (stage) {
+            "REGISTERING" -> Text(
+                "Trwa rejestracja i przygotowanie operacyjne. Pozostało około ${state.optInt("registration_hours_left")} godzin gry.",
+                color = Tv.Muted, fontSize = 11.sp, modifier = Modifier.padding(top = 9.dp))
+            "CONVERTING" -> Text(
+                "Trwa przekształcenie w spółkę z o.o. Pozostało około ${state.optInt("registration_hours_left")} godzin gry.",
+                color = Tv.Blue, fontSize = 11.sp, modifier = Modifier.padding(top = 9.dp))
+            "IPO_REVIEW" -> Text(
+                "Wniosek jest sprawdzany. Przewidywany koniec procesu za około ${state.optInt("ipo_hours_left")} godzin gry. Firma nadal działa.",
+                color = Tv.Blue, fontSize = 11.sp, modifier = Modifier.padding(top = 9.dp))
+            "OPERATING" -> {
+                if (state.optBoolean("can_convert_to_sp_zoo")) {
+                    Text("Prowadzisz działalność jako JDG. Aby ubiegać się o IPO, przekształć firmę w spółkę z o.o. Koszt procedury: 1 200 USD.",
+                        color = Tv.Muted, fontSize = 11.sp, modifier = Modifier.padding(top = 9.dp))
+                    Button(onClick = onConvert, modifier = Modifier.fillMaxWidth().padding(top = 7.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = Tv.Blue)) {
+                        Text("PRZEKSZTAŁĆ W SP. Z O.O.", color = Color(0xFF07131E), fontWeight = FontWeight.Bold)
+                    }
+                } else if (state.optBoolean("ipo_eligible")) {
+                    Text("Firma spełnia warunki rozpoczęcia procesu IPO.", color = Tv.Up,
+                        fontSize = 11.sp, modifier = Modifier.padding(top = 9.dp))
+                    TvInput("Ticker przy debiucie", ticker,
+                        { ticker = it.uppercase(Locale.ROOT) }, placeholder = "np. NOVA")
+                    Spacer(Modifier.height(7.dp))
+                    TvInput("Całkowita liczba akcji", supply, { supply = it },
+                        keyboard = KeyboardType.Decimal, placeholder = "1000000")
+                    Button(
+                        onClick = { onIpo(ticker, supply) },
+                        enabled = ticker.matches(Regex("[A-Z][A-Z0-9]{1,9}")) &&
+                            (supply.toBigDecimalOrNull()?.signum() ?: 0) > 0,
+                        modifier = Modifier.fillMaxWidth().padding(top = 7.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = Tv.Blue),
+                    ) {
+                        Text("ZŁÓŻ WNIOSEK O IPO", color = Color(0xFF07131E), fontWeight = FontWeight.Bold)
+                    }
+                } else {
+                    val remaining = (72 - state.optInt("operating_hours")).coerceAtLeast(0)
+                    Text("Firma musi jeszcze prowadzić działalność i zbudować wyniki. Minimalna historia do IPO: 72 godziny gry; pozostało co najmniej $remaining h.",
+                        color = Tv.Muted, fontSize = 11.sp, modifier = Modifier.padding(top = 9.dp))
+                }
+            }
+        }
+    }
+}
+
 @Composable
 private fun CompanyDevelopmentCard(
     state: JSONObject,
@@ -182,6 +396,7 @@ private fun CompanyDevelopmentCard(
     onFund: (String) -> Unit,
     onWithdraw: (String) -> Unit,
     onStaff: (String, Int) -> Unit,
+    allowDividends: Boolean = true,
 ) {
     val next = state.optJSONObject("next_costs")
     val maxLevel = state.optInt("max_level", 10)
@@ -206,7 +421,7 @@ private fun CompanyDevelopmentCard(
             }
         }
         Spacer(Modifier.height(10.dp))
-        Text("KASA SPÓŁKI", color = Tv.Muted, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+        Text(if (allowDividends) "KASA SPÓŁKI" else "KASA FIRMY", color = Tv.Muted, fontSize = 9.sp, fontWeight = FontWeight.Bold)
         Text(fmtUsd(cash) + " USD", color = Color.White, fontSize = 23.sp, fontWeight = FontWeight.Bold)
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             CompanyStat("PRZYCHÓD / H", fmtUsd(revenue))
@@ -218,7 +433,8 @@ private fun CompanyDevelopmentCard(
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             CompanyStat("PRZYCHÓD", fmtUsd(state.optString("revenue_total", "0").toDoubleOrNull() ?: 0.0))
             CompanyStat("KOSZTY", fmtUsd(state.optString("expense_total", "0").toDoubleOrNull() ?: 0.0))
-            CompanyStat("DYWIDENDY", fmtUsd(state.optString("dividends_total", "0").toDoubleOrNull() ?: 0.0))
+            if (allowDividends) CompanyStat("DYWIDENDY", fmtUsd(state.optString("dividends_total", "0").toDoubleOrNull() ?: 0.0))
+            else CompanyStat("KAPITAŁ", fmtUsd(state.optString("invested", "0").toDoubleOrNull() ?: 0.0))
         }
         HorizontalDivider(Modifier.padding(vertical = 10.dp), color = Tv.Line)
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
@@ -244,9 +460,11 @@ private fun CompanyDevelopmentCard(
                 modifier = Modifier.weight(1f), colors = ButtonDefaults.buttonColors(containerColor = Tv.Blue)) {
                 Text("WPŁAĆ KAPITAŁ", color = Color(0xFF07131E), fontSize = 10.sp, fontWeight = FontWeight.Bold)
             }
-            OutlinedButton(onClick = { onWithdraw(amount) }, enabled = !busy && (amount.toDoubleOrNull() ?: 0.0) > 0.0,
-                modifier = Modifier.weight(1f)) {
-                Text("WYPŁAĆ DYWIDENDĘ", fontSize = 10.sp)
+            if (allowDividends) {
+                OutlinedButton(onClick = { onWithdraw(amount) }, enabled = !busy && (amount.toDoubleOrNull() ?: 0.0) > 0.0,
+                    modifier = Modifier.weight(1f)) {
+                    Text("WYPŁAĆ DYWIDENDĘ", fontSize = 10.sp)
+                }
             }
         }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -268,7 +486,9 @@ private fun CompanyDevelopmentCard(
         CompanyBranch("PRODUKCJA I PRODUKT", "production", state.optInt("production_level"), next?.optLong("production", 500L) ?: 500L, maxLevel, busy, onUpgrade)
         Spacer(Modifier.height(7.dp))
         CompanyBranch("LOGISTYKA I OPERACJE", "logistics", state.optInt("logistics_level"), next?.optLong("logistics", 500L) ?: 500L, maxLevel, busy, onUpgrade)
-        Text("Firma działa w symulacji godzinowej. Rozwój wpływa na produktywność, popyt, jakość produktu i koszty. Dywidenda trafia proporcjonalnie do aktualnych akcjonariuszy, a kurs nadal wynika z dopasowanych zleceń.",
+        Text(if (allowDividends)
+            "Firma działa w symulacji godzinowej. Rozwój wpływa na produktywność, popyt, jakość produktu i koszty. Dywidenda trafia proporcjonalnie do aktualnych akcjonariuszy, a kurs wynika z dopasowanych zleceń."
+            else "Prywatne przedsiębiorstwo nie wypłaca dywidendy giełdowej. Kapitał zostaje w firmie i finansuje pensje, inwestycje, zapasy oraz rozwój przed IPO.",
             color = Tv.Muted, fontSize = 9.sp, modifier = Modifier.padding(top = 10.dp))
     }
 }

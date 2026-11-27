@@ -145,12 +145,15 @@ object Api {
 
                 while (isActive) {
                     delay(1500)
-                    m.step()
-                    stepCount++
-
-                    // Zapis botów co 5 kroków.
-                    if (stepCount % 5 == 0) persistOffline(m)
-
+                    try {
+                        m.step()
+                        stepCount++
+                        // Zapis botów co 5 udanych kroków.
+                        if (stepCount % 5 == 0) persistOffline(m)
+                    } catch (error: Exception) {
+                        // Błąd pojedynczej decyzji bota nie może ubić całej aplikacji.
+                        android.util.Log.e("VirtualExchange", "Błąd kroku rynku offline; symulacja spróbuje ponownie.", error)
+                    }
                     ticks.tryEmit("*")
                 }
             }

@@ -107,6 +107,8 @@ def init_db():
         db.execute("CREATE INDEX IF NOT EXISTS idx_orders_match ON orders(symbol,side,status,price_i,id)")
         db.execute("CREATE INDEX IF NOT EXISTS idx_trades_symbol ON trades(symbol,id)")
         db.commit()
+        from .economy.store import migrate   # additive economy tables + versioned migrations
+        migrate(db)
 
 @contextmanager
 def transaction():

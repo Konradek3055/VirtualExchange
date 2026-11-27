@@ -73,7 +73,7 @@ private fun candleEpochMillis(label: String): Long? {
     return null
 }
 
-fun fillCandles(candles: List<Candle>, intervalSeconds: Int): List<Candle> {
+fun fillCandles(candles: List<Candle>, intervalSeconds: Int, continuous: Boolean = true): List<Candle> {
     if (candles.isEmpty() || intervalSeconds <= 0) return emptyList()
     val stepMs = intervalSeconds.toLong() * 1000L
     val grouped = java.util.TreeMap<Long, Candle>()
@@ -115,7 +115,15 @@ fun fillCandles(candles: List<Candle>, intervalSeconds: Int): List<Candle> {
                 }
             }
         }
-        result.add(candle.copy(time = label(stamp)))
+        // Ciągłość wykresu: otwarcie świecy = zamknięcie poprzedniej (jak na giełdach z ciągłym rynkiem).
+        // Bez tego między świecami widać "dziury" cenowe, gdy pierwsza transakcja okna jest po innej cenie.
+        // Zmienia tylko prezentację open/high/low; close i wolumen pozostają rzeczywiste.
+        val linked = if (continuous && priorClose != null) candle.copy(
+            open = priorClose,
+            high = max(candle.high, priorClose),
+            low = min(candle.low, priorClose),
+        ) else candle
+        result.add(linked.copy(time = label(stamp)))
         previousTime = stamp
         previousClose = candle.close
     }
