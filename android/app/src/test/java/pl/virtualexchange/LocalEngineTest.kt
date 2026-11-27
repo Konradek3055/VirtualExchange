@@ -132,8 +132,19 @@ class LocalEngineTest {
         var now = 1_700_000_000_000L
         val market = OfflineMarket(seed = 101, wallClock = { now }, consumerSpendRatePerHour = BigDecimal.ZERO)
         now += 90_000L
-        market.step()
+        market.syncClock()
         assertEquals(now, market.clockMs)
+    }
+
+    @Test fun offlineStepAdvancesSimulationClockByGameStep() {
+        val market = OfflineMarket(
+            seed = 102,
+            wallClock = { 1_700_000_000_000L },
+            consumerSpendRatePerHour = BigDecimal.ZERO,
+        )
+        val before = market.clockMs
+        market.step()
+        assertEquals(before + OfflineMarket.GAME_STEP_MS, market.clockMs)
     }
 
     @Test fun newCompanyDoesNotReceiveArtificialTenDollarQuote() {

@@ -1013,7 +1013,7 @@ class OfflineMarket(
         companyState(asset.symbol)
     }
 
-    /** Krok botów. Domyślnie korzysta z rzeczywistego zegara telefonu; jawny argument służy tylko testom/rozgrzewce. */
+    /** Krok botów przesuwa zegar symulacji o 15 minut; jawny argument pozwala ustawić inny krok. */
     @Synchronized
     fun step(simulatedMs: Long = 0L) {
         if (simulatedMs > 0L) {
