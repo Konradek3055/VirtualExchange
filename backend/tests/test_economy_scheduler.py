@@ -35,3 +35,14 @@ def test_failed_tick_is_swallowed_and_rolled_back(client, monkeypatch):
     assert scheduler.tick_once() is None
     with connect() as db:
         assert store.status(db)["last_tick"] == 1
+
+
+def test_auto_bootstrap_is_opt_in_and_idempotent(client, monkeypatch):
+    monkeypatch.setenv("VE_ECONOMY_ENABLED", "1")
+    assert scheduler.bootstrap_if_requested() is False            # flag not set
+    monkeypatch.setenv("VE_ECONOMY_AUTO_BOOTSTRAP", "1")
+    assert scheduler.bootstrap_if_requested() is True
+    assert scheduler.bootstrap_if_requested() is False            # second boot keeps the world
+    with connect() as db:
+        assert store.status(db)["firms"] == 1
+        store.load_ledger(db).assert_money_supply(D("50000"))

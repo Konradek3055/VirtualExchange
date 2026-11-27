@@ -21,7 +21,13 @@ app.add_middleware(CORSMiddleware,allow_origins=["*"],allow_methods=["*"],allow_
 sockets = {}
 
 @app.on_event("startup")
+def startup():
+    init_db()
+    seed()
+
+@app.on_event("startup")
 async def start_economy_ticker():
+    economy_scheduler.bootstrap_if_requested()   # after init_db(): registered after startup()
     seconds = economy_scheduler.interval_seconds()
     if seconds:
         app.state.economy_task = asyncio.create_task(economy_scheduler.run_loop(seconds))
@@ -31,11 +37,6 @@ async def stop_economy_ticker():
     task = getattr(app.state, "economy_task", None)
     if task:
         task.cancel()
-
-@app.on_event("startup")
-def startup():
-    init_db()
-    seed()
 
 def account_from_key(key):
     if not key:

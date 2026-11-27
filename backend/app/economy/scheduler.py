@@ -44,3 +44,20 @@ async def run_loop(seconds: float) -> None:
     while True:
         await asyncio.sleep(seconds)
         await asyncio.to_thread(tick_once)
+
+
+def bootstrap_if_requested() -> bool:
+    """VE_ECONOMY_AUTO_BOOTSTRAP=1: create the sandbox world once (regions, suppliers, households,
+    government) so players can found firms without an admin call. Never touches existing worlds."""
+    if os.environ.get("VE_ECONOMY_ENABLED") != "1" or os.environ.get("VE_ECONOMY_AUTO_BOOTSTRAP") != "1":
+        return False
+    try:
+        with transaction() as db:
+            world.bootstrap_demo(db)
+        log.info("Economy sandbox world created")
+        return True
+    except store.TickConflict:
+        return False   # already exists
+    except Exception:  # noqa: BLE001
+        log.exception("Economy bootstrap failed and was rolled back")
+        return False

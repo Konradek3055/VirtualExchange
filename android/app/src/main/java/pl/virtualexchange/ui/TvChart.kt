@@ -500,7 +500,7 @@ fun TvChart(
                         val col = if (c.close >= c.open) UP else DOWN
                         val x = cx(i)
                         if (indicators.volume) {
-                            val vh = if (maxVol > 0) (candles[i].volume / maxVol * volH * 0.95).toFloat() else 0f
+                            val vh = (if (maxVol > 0) (candles[i].volume / maxVol * volH * 0.95).toFloat() else 0f).coerceAtLeast(1.5f) // zerowy wolumen = cienki słupek zamiast dziury
                             drawRect(col.copy(alpha = 0.4f), Offset(x - cw * 0.45f, mainBottom - vh), Size(cw * 0.9f, vh))
                         }
                         when (chartType) {
