@@ -35,22 +35,31 @@ fun TvCompanyTab(store: Store, scope: CoroutineScope) {
     var privateCompanies by remember { mutableStateOf(listOf<JSONObject>()) }
     var developments by remember { mutableStateOf<Map<String, JSONObject>>(emptyMap()) }
     var busyCompany by remember { mutableStateOf("") }
+    var busyPrivateAction by remember { mutableStateOf("") }
     val companies = store.assets.filter { !it.isNull("creator_id") }
     val mine = companies.filter { it.optInt("creator_id", -1) == store.userId }
     val privateLimitReached = mine.size + privateCompanies.size >= 5
 
     fun runCompanyAction(ticker: String, endpoint: String, payload: JSONObject, success: String) {
+        if (busyCompany.isNotEmpty()) return
         busyCompany = ticker
         scope.launch {
             try {
                 val result = Api.post("companies/" + ticker + "/" + endpoint, payload)
                 developments = developments + (ticker to result)
-                store.refreshAccount()
-                if (Api.offline) {
-                    try { privateCompanies = Api.getArray("companies/private", auth = true).objects() }
-                    catch (_: Exception) { }
-                }
                 store.message = success
+
+                try {
+                    store.refreshAccount()
+                } catch (refreshError: Exception) {
+                    store.message = "$success Saldo nie odświeżyło się — odśwież ekran."
+                }
+
+                if (Api.offline) {
+                    try {
+                        privateCompanies = Api.getArray("companies/private", auth = true).objects()
+                    } catch (_: Exception) { }
+                }
             } catch (error: Exception) {
                 store.message = error.message ?: "Nie udało się wykonać operacji spółki."
             } finally {
@@ -97,8 +106,8 @@ fun TvCompanyTab(store: Store, scope: CoroutineScope) {
         item {
             TvCard {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    CompanyMetric("TWOJE SPÓŁKI", mine.size.toString())
-                    CompanyMetric("LIMIT", "3")
+                    CompanyMetric("TWOJE FIRMY", (mine.size + privateCompanies.size).toString())
+                    CompanyMetric("LIMIT", "5")
                     CompanyMetric("SPOŁECZNOŚĆ", companies.size.toString())
                 }
                 HorizontalDivider(Modifier.padding(vertical = 12.dp), color = Tv.Line)
@@ -166,9 +175,15 @@ fun TvCompanyTab(store: Store, scope: CoroutineScope) {
                                     .put("capital", startupCapital.trim())
                                     .put("sector", sector)
                                     .put("legal_form", legalForm))
-                                store.message = "Zarejestrowano firmę. Trwa przygotowanie do rozpoczęcia działalności."
-                                name = ""; description = ""; startupCapital = if (legalForm == "sp_zoo") "5000" else "1500"
-                                privateCompanies = Api.getArray("companies/private", auth = true).objects()
+                                store.message = "Firma została zarejestrowana. Trwa przygotowanie do rozpoczęcia działalności."
+                                name = ""
+                                description = ""
+                                startupCapital = if (legalForm == "sp_zoo") "5000" else "1500"
+                                try {
+                                    privateCompanies = Api.getArray("companies/private", auth = true).objects()
+                                } catch (_: Exception) {
+                                    store.message = "Firma utworzona. Lista nie odświeżyła się — otwórz ponownie zakładkę Spółki."
+                                }
                             } catch (error: Exception) {
                                 store.message = error.message ?: "Nie udało się zarejestrować firmy."
                             } finally {
