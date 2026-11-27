@@ -73,7 +73,7 @@ private fun candleEpochMillis(label: String): Long? {
     return null
 }
 
-fun fillCandles(candles: List<Candle>, intervalSeconds: Int, continuous: Boolean = true): List<Candle> {
+fun fillCandles(candles: List<Candle>, intervalSeconds: Int, continuous: Boolean = false): List<Candle> {
     if (candles.isEmpty() || intervalSeconds <= 0) return emptyList()
     val stepMs = intervalSeconds.toLong() * 1000L
     val grouped = java.util.TreeMap<Long, Candle>()
@@ -99,7 +99,7 @@ fun fillCandles(candles: List<Candle>, intervalSeconds: Int, continuous: Boolean
 
     val formatter = java.time.format.DateTimeFormatter.ofPattern("uuuu-MM-dd HH:mm", Locale.US)
     fun label(ms: Long) = java.time.Instant.ofEpochMilli(ms).atZone(java.time.ZoneOffset.UTC).toLocalDateTime().format(formatter)
-    val result = ArrayList<Candle>(min(500, grouped.size + 32))
+    val result = ArrayList<Candle>(min(2000, grouped.size + 32))
     var previousTime: Long? = null
     var previousClose: Double? = null
     for ((stamp, candle) in grouped) {
@@ -107,9 +107,9 @@ fun fillCandles(candles: List<Candle>, intervalSeconds: Int, continuous: Boolean
         val priorClose = previousClose
         if (priorTime != null && priorClose != null && stamp > priorTime + stepMs) {
             val missing = (stamp - priorTime) / stepMs - 1L
-            if (missing in 1L..500L) {
+            if (missing in 1L..2000L) {
                 var gapStamp = priorTime + stepMs
-                while (gapStamp < stamp && result.size < 500) {
+                while (gapStamp < stamp && result.size < 2000) {
                     result.add(Candle(label(gapStamp), priorClose, priorClose, priorClose, priorClose, 0.0))
                     gapStamp += stepMs
                 }
@@ -127,5 +127,5 @@ fun fillCandles(candles: List<Candle>, intervalSeconds: Int, continuous: Boolean
         previousTime = stamp
         previousClose = candle.close
     }
-    return if (result.size > 500) result.takeLast(500) else result
+    return if (result.size > 2000) result.takeLast(2000) else result
 }

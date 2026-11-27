@@ -491,16 +491,18 @@ private fun CompanyDevelopmentCard(
             }
         }
         Text("ROZWÓJ DZIAŁÓW", color = Tv.Blue, fontSize = 10.sp, fontWeight = FontWeight.Bold,
-            modifier = Modifier.padding(top = 14.dp, bottom = 7.dp))
-        CompanyBranch("BIURO I ZARZĄDZANIE", "office", state.optInt("office_level"), next?.optLong("office", 500L) ?: 500L, maxLevel, busy, onUpgrade)
+            modifier = Modifier.padding(top = 14.dp, bottom = 3.dp))
+        Text("Ulepszenia są finansowane z kasy firmy. Wpłać kapitał, jeśli brakuje środków.",
+            color = Tv.Muted, fontSize = 9.sp, modifier = Modifier.padding(bottom = 7.dp))
+        CompanyBranch("BIURO I ZARZĄDZANIE", "office", state.optInt("office_level"), next?.optLong("office", 500L) ?: 500L, maxLevel, busy, cash, onUpgrade)
         Spacer(Modifier.height(7.dp))
-        CompanyBranch("LABORATORIUM I R&D", "research", state.optInt("research_level"), next?.optLong("research", 500L) ?: 500L, maxLevel, busy, onUpgrade)
+        CompanyBranch("LABORATORIUM I R&D", "research", state.optInt("research_level"), next?.optLong("research", 500L) ?: 500L, maxLevel, busy, cash, onUpgrade)
         Spacer(Modifier.height(7.dp))
-        CompanyBranch("MARKETING I SPRZEDAŻ", "marketing", state.optInt("marketing_level"), next?.optLong("marketing", 500L) ?: 500L, maxLevel, busy, onUpgrade)
+        CompanyBranch("MARKETING I SPRZEDAŻ", "marketing", state.optInt("marketing_level"), next?.optLong("marketing", 500L) ?: 500L, maxLevel, busy, cash, onUpgrade)
         Spacer(Modifier.height(7.dp))
-        CompanyBranch("PRODUKCJA I PRODUKT", "production", state.optInt("production_level"), next?.optLong("production", 500L) ?: 500L, maxLevel, busy, onUpgrade)
+        CompanyBranch("PRODUKCJA I PRODUKT", "production", state.optInt("production_level"), next?.optLong("production", 500L) ?: 500L, maxLevel, busy, cash, onUpgrade)
         Spacer(Modifier.height(7.dp))
-        CompanyBranch("LOGISTYKA I OPERACJE", "logistics", state.optInt("logistics_level"), next?.optLong("logistics", 500L) ?: 500L, maxLevel, busy, onUpgrade)
+        CompanyBranch("LOGISTYKA I OPERACJE", "logistics", state.optInt("logistics_level"), next?.optLong("logistics", 500L) ?: 500L, maxLevel, busy, cash, onUpgrade)
         Text(if (allowDividends)
             "Firma działa w symulacji godzinowej. Rozwój wpływa na produktywność, popyt, jakość produktu i koszty. Dywidenda trafia proporcjonalnie do aktualnych akcjonariuszy, a kurs wynika z dopasowanych zleceń."
             else "Prywatne przedsiębiorstwo nie wypłaca dywidendy giełdowej. Kapitał zostaje w firmie i finansuje pensje, inwestycje, zapasy oraz rozwój przed IPO.",
@@ -511,7 +513,7 @@ private fun CompanyDevelopmentCard(
 @Composable
 private fun CompanyBranch(
     label: String, branch: String, level: Int, cost: Long, maxLevel: Int,
-    busy: Boolean, onUpgrade: (String) -> Unit,
+    busy: Boolean, cashAvailable: Double, onUpgrade: (String) -> Unit,
 ) {
     Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(11.dp)).background(Tv.Chip).padding(10.dp),
         verticalAlignment = Alignment.CenterVertically) {
@@ -520,12 +522,21 @@ private fun CompanyBranch(
             Text("Poziom $level / $maxLevel", color = Tv.Muted, fontSize = 10.sp,
                 modifier = Modifier.padding(top = 3.dp))
         }
-        Button(onClick = { onUpgrade(branch) }, enabled = !busy && level < maxLevel,
+        val atMax = level >= maxLevel
+        val affordable = cashAvailable >= cost.toDouble()
+        Button(onClick = { onUpgrade(branch) }, enabled = !busy && !atMax && affordable,
             contentPadding = PaddingValues(horizontal = 10.dp, vertical = 5.dp),
-            colors = ButtonDefaults.buttonColors(containerColor = Tv.Blue),
+            colors = ButtonDefaults.buttonColors(containerColor = if (atMax) Tv.Chip else Tv.Blue),
             shape = RoundedCornerShape(9.dp)) {
-            Text(if (level >= maxLevel) "MAX" else "ROZWIŃ · ${fmtUsd(cost.toDouble())} USD",
-                color = Color(0xFF07131E), fontSize = 9.sp, fontWeight = FontWeight.Bold)
+            Text(
+                when {
+                    atMax -> "MAX"
+                    !affordable -> "BRAK ŚRODKÓW"
+                    else -> "ROZWIŃ · ${fmtUsd(cost.toDouble())} USD"
+                },
+                color = if (atMax) Tv.Muted else Color(0xFF07131E),
+                fontSize = 9.sp, fontWeight = FontWeight.Bold
+            )
         }
     }
 }

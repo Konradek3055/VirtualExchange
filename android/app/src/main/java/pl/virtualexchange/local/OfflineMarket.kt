@@ -910,10 +910,13 @@ class OfflineMarket(
         val level = state.optInt(key)
         if (level >= 10) throw EngineError("Ta gałąź osiągnęła maksymalny poziom")
         val cost = BigDecimal(500L * (level + 1) * (level + 1))
-        engine.spendUsd(playerId, cost)
-        economyPool = economyPool.add(cost)
+        val cash = stateDecimal(state, "cash")
+        if (cash < cost) throw EngineError("Spółka potrzebuje $cost USD w kasie na tę inwestycję")
         val invested = stateDecimal(state, "invested").add(cost)
-        state.put(key, level + 1).put("invested", invested.stripTrailingZeros().toPlainString())
+        state.put(key, level + 1)
+            .put("cash", cash.subtract(cost).stripTrailingZeros().toPlainString())
+            .put("invested", invested.stripTrailingZeros().toPlainString())
+        householdPool = householdPool.add(cost)
         return companyPayload(symbol, state)
     }
 

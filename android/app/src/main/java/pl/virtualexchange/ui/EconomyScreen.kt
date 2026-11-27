@@ -59,6 +59,7 @@ fun TvEconomyTab(store: Store, scope: CoroutineScope) {
     var section by remember { mutableIntStateOf(0) }
     var reload by remember { mutableIntStateOf(0) }
     var loading by remember { mutableStateOf(false) }
+    var actionBusy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf("") }
     var status by remember { mutableStateOf(JSONObject()) }
     var regions by remember { mutableStateOf(listOf<JSONObject>()) }
@@ -91,14 +92,22 @@ fun TvEconomyTab(store: Store, scope: CoroutineScope) {
     }
 
     fun act(path: String, payload: JSONObject, success: String) {
+        if (actionBusy) return
+        actionBusy = true
         scope.launch {
             try {
                 Api.post("economy/$path", payload)
                 store.message = success
-                store.refreshAccount()
+                try {
+                    store.refreshAccount()
+                } catch (_: Exception) {
+                    store.message = "$success Portfel nie odświeżył się automatycznie."
+                }
                 reload++
             } catch (e: Exception) {
                 store.message = e.message ?: "Operacja nie powiodła się."
+            } finally {
+                actionBusy = false
             }
         }
     }

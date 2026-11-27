@@ -187,7 +187,7 @@ object LocalApi {
 
                 method == "GET" && parts[0] == "candles" && parts.size == 2 -> {
                     val limit = query.split("&").firstOrNull { it.startsWith("limit=") }
-                        ?.removePrefix("limit=")?.toIntOrNull()?.coerceIn(1, 500) ?: 100
+                        ?.removePrefix("limit=")?.toIntOrNull()?.coerceIn(1, 2000) ?: 100
                     val iv = query.split("&").firstOrNull { it.startsWith("interval=") }
                         ?.removePrefix("interval=") ?: "1m"
                     val bucketMs = Regex("""(\d+)([mhd])""").matchEntire(iv)?.let { m ->

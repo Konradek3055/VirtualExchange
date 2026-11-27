@@ -268,11 +268,11 @@ def candles(symbol:str,limit:int=100,interval:str="1m"):
     if interval not in INTERVALS:
         raise HTTPException(400,"interval must be one of 1m, 3m, 5m, 15m, 30m, 1h, 4h, 1d")
     sec=INTERVALS[interval]
-    limit = max(1,min(limit,500))
+    limit = max(1,min(limit,2000))
     with connect() as db:
         rows = db.execute(
             "SELECT price,quantity,created_at FROM trades WHERE symbol=? ORDER BY id DESC LIMIT ?",
-            (symbol.upper(),min(limit*60*(sec//60),50000))
+            (symbol.upper(),min(limit*60*(sec//60),200000))
         ).fetchall()
 
     result = {}

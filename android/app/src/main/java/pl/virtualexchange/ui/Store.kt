@@ -48,7 +48,7 @@ class Store {
         trades = Api.getArray("trades/$symbol").objects().take(30)
         val iv = interval
         candles = fillCandles(
-            parseCandles(Api.getArray("candles/$symbol?limit=300&interval=$iv")),
+            parseCandles(Api.getArray("candles/$symbol?limit=2000&interval=$iv")),
             TvIntervals.seconds(iv),
         )
         stats = try {

@@ -165,14 +165,13 @@ def upgrade_company(account_id, symbol, branch):
         if level >= MAX_LEVEL:
             raise HTTPException(400, "This development branch is already at maximum level")
         cost = D(BASE_COST * (level + 1) ** 2)
-        cash, locked = get_balance(db, account_id, "USD")
-        if cash < cost:
-            raise HTTPException(400, f"Not enough USD. Required: {cost}")
-        set_balance(db, account_id, "USD", cash - cost, locked)
+        company_cash = D(row["cash"])
+        if company_cash < cost:
+            raise HTTPException(400, f"Company needs {cost} USD in its treasury for this upgrade")
         invested = D(row["invested"]) + cost
         db.execute(
-            f"UPDATE company_development SET {field}=?, invested=?, updated_at=CURRENT_TIMESTAMP WHERE symbol=?",
-            (level + 1, str(invested), symbol.upper()),
+            f"UPDATE company_development SET {field}=?, cash=?, invested=?, updated_at=CURRENT_TIMESTAMP WHERE symbol=?",
+            (level + 1, str(_money(company_cash - cost)), str(invested), symbol.upper()),
         )
         return _payload(db.execute("SELECT * FROM company_development WHERE symbol=?", (symbol.upper(),)).fetchone())
 

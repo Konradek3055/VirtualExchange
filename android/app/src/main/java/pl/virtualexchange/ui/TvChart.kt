@@ -291,7 +291,7 @@ fun TvChart(
     }
     LaunchedEffect(rangeReq) {
         if (rangeReq != null) {
-            visible = rangeReq.candles.toFloat().coerceIn(10f, 500f)
+            visible = rangeReq.candles.toFloat().coerceIn(10f, 2000f)
             shift = 0f
         }
     }
@@ -723,9 +723,10 @@ fun IntervalSheet(
             Text("Zakres dat", color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.SemiBold)
             Spacer(Modifier.height(16.dp))
             Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                listOf("1D" to 1, "5D" to 5, "1M" to 30, "3M" to 90, "6M" to 180).forEach { (label, days) ->
-                    TvChip(label, false) { onRange((days * 86400 / intervalSec).coerceIn(10, 500)) }
+                listOf("1D" to 1, "5D" to 5, "1M" to 30, "3M" to 90, "6M" to 180, "1Y" to 365).forEach { (label, days) ->
+                    TvChip(label, false) { onRange((days * 86400 / intervalSec).coerceIn(10, 2000)) }
                 }
+                TvChip("MAX", false) { onRange(2000) }
             }
             HorizontalDivider(Modifier.padding(vertical = 16.dp), color = Color(0xFF3A3A3A))
             Text("Interwał", color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.SemiBold)
