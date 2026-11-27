@@ -335,8 +335,10 @@ private fun PrivateBusinessCard(
             CompanyStat("PRACOWNICY", state.optInt("employees").toString())
             CompanyStat("REPUTACJA", "${state.optDouble("reputation", 50.0).toInt()}/100")
         }
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween,
-            modifier = Modifier.padding(top = 8.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
             CompanyStat("PRZYCHODY", fmtUsd(revenue))
             CompanyStat("KOSZTY", fmtUsd(expenses))
             CompanyStat("DZIAŁALNOŚĆ", "${state.optInt("operating_hours")} h")
