@@ -73,7 +73,7 @@ private fun candleEpochMillis(label: String): Long? {
     return null
 }
 
-fun fillCandles(candles: List<Candle>, intervalSeconds: Int, continuous: Boolean = false): List<Candle> {
+fun fillCandles(candles: List<Candle>, intervalSeconds: Int, continuous: Boolean = true): List<Candle> {
     if (candles.isEmpty() || intervalSeconds <= 0) return emptyList()
     val stepMs = intervalSeconds.toLong() * 1000L
     val grouped = java.util.TreeMap<Long, Candle>()
