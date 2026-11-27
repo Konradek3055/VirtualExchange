@@ -55,6 +55,16 @@ def test_company_capital_staff_and_dividends(client):
 def test_company_upgrades_change_operating_economics(client):
     headers = account(client, "owner_three")
     create_company(client, headers)
+
+    # Ulepszenia są opłacane z kasy firmy, więc najpierw wnosimy kapitał.
+    funded = client.post(
+        "/companies/NOVA/capital",
+        headers=headers,
+        json={"amount": "1000"},
+    )
+    assert funded.status_code == 200, funded.text
+    assert D(funded.json()["cash"]) >= D("1000")
+
     before = company(client, headers)
     upgraded = client.post("/companies/NOVA/upgrade", headers=headers, json={"branch": "production"})
     assert upgraded.status_code == 200
